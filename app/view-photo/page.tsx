@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
-import { createFaceCutoutDataUrls } from "@/lib/face-cutout";
+import { createBunnyShareCutoutDataUrls } from "@/lib/bunny-share-cutout";
 import {
   getPhotosServerSnapshot,
   listPhotos,
   subscribePhotos,
 } from "@/lib/photo-store";
+import { getRawPhoto } from "@/lib/photo-raw-store";
 import { upsertSharedFaces } from "@/lib/shared-face-store";
 
 const BG_URL = "/img/%EB%B2%84%EB%84%A4%EB%B0%B0%EA%B2%BD1.png";
@@ -33,8 +34,12 @@ export default function ViewPhotoPage() {
     setShareMessage(null);
 
     try {
-      const faceCutouts = await createFaceCutoutDataUrls(latestPhoto.dataUrl);
-      upsertSharedFaces(latestPhoto.id, faceCutouts);
+      const shareSource =
+        (await getRawPhoto(latestPhoto.id)) ?? latestPhoto.dataUrl;
+      const faceCutouts = await createBunnyShareCutoutDataUrls(
+        shareSource,
+      );
+      upsertSharedFaces(`${latestPhoto.id}:bunny-v2`, faceCutouts);
       setShareMessage("공유 완료! 공유 화면에서 확인하세요.");
     } catch {
       setShareMessage("공유 이미지 생성에 실패했어요. 다시 시도해주세요.");

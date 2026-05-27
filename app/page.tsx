@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addPhoto } from "@/lib/photo-store";
+import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 
 type CameraFilter = {
@@ -157,7 +158,7 @@ const CAMERA_FILTERS: CameraFilter[] = [
 
 const BUNNY_FRAME_URL =
   "/img/%ED%94%84%EB%A0%88%EC%9E%84%201_%ED%86%A0%EB%81%BC.png";
-const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.08;
+const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.15;
 
 type OverlayRect = {
   x: number;
@@ -167,7 +168,7 @@ type OverlayRect = {
 };
 
 function getFrameBox(face: FaceBox) {
-  const size = Math.max(face.width, face.height) * 2.55;
+  const size = Math.max(face.width, face.height) * 2.8;
   const x = face.x + face.width / 2 - size / 2;
   const y =
     face.y + face.height - size + face.height * BUNNY_BOTTOM_OFFSET_FACE_RATIO;
@@ -453,31 +454,74 @@ export default function Home() {
       return;
     }
 
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const context = canvas.getContext("2d");
-    if (!context) {
+    const viewport = viewportRef.current;
+    const viewportRect = viewport?.getBoundingClientRect();
+    const outWidth = viewportRect?.width ?? viewport?.clientWidth ?? width;
+    const outHeight = viewportRect?.height ?? viewport?.clientHeight ?? height;
+    if (!outWidth || !outHeight) {
       setMessage("사진 캡처에 실패했습니다.");
       return;
     }
 
-    context.filter = selectedFilter.cssFilter;
-    context.translate(width, 0);
-    context.scale(-1, 1);
-    context.drawImage(video, 0, 0, width, height);
+    const overlaySnapshot = mappedOverlays.map((rect) => ({ ...rect }));
+    const dpr = Math.max(1, Math.round((window.devicePixelRatio ?? 1) * 100) / 100);
+    // 미리보기 대비 캡처가 오른쪽으로 밀리는 경우를 위한 보정값 (음수면 왼쪽으로 이동)
+    const CAPTURE_X_NUDGE_PX = 0;
+
+
+    // 미리보기(첫 화면)는 object-cover로 렌더링된다.
+    // 캡처도 동일한 cover 크롭 + 미러링 + 프레임 위치(뷰포트 픽셀)를 그대로 적용한다.
+    const scale = Math.max(outWidth / width, outHeight / height);
+    const renderWidth = width * scale;
+    const renderHeight = height * scale;
+    const offsetX = (outWidth - renderWidth) / 2;
+    const offsetY = (outHeight - renderHeight) / 2;
+
+    const rawCanvas = document.createElement("canvas");
+    rawCanvas.width = Math.round(outWidth * dpr);
+    rawCanvas.height = Math.round(outHeight * dpr);
+    const rawCtx = rawCanvas.getContext("2d");
+    if (!rawCtx) {
+      setMessage("사진 캡처에 실패했습니다.");
+      return;
+    }
+
+    rawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    rawCtx.filter = selectedFilter.cssFilter;
+    rawCtx.translate(outWidth, 0);
+    rawCtx.scale(-1, 1);
+    rawCtx.translate(CAPTURE_X_NUDGE_PX, 0);
+    rawCtx.drawImage(video, offsetX, offsetY, renderWidth, renderHeight);
+    const rawDataUrl = rawCanvas.toDataURL("image/jpeg", 0.92);
+
+    const finalCanvas = document.createElement("canvas");
+    finalCanvas.width = Math.round(outWidth * dpr);
+    finalCanvas.height = Math.round(outHeight * dpr);
+    const finalCtx = finalCanvas.getContext("2d");
+    if (!finalCtx) {
+      setMessage("사진 캡처에 실패했습니다.");
+      return;
+    }
+
+    finalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    finalCtx.filter = selectedFilter.cssFilter;
+    finalCtx.translate(outWidth, 0);
+    finalCtx.scale(-1, 1);
+    finalCtx.translate(CAPTURE_X_NUDGE_PX, 0);
+    finalCtx.drawImage(video, offsetX, offsetY, renderWidth, renderHeight);
 
     if (
       isBunnyFilter &&
-      overlayRects.length > 0 &&
+      overlaySnapshot.length > 0 &&
       frameImageRef.current?.complete
     ) {
       const frameImage = frameImageRef.current;
-      overlayRects.forEach((frameRect) => {
-        context.drawImage(
+      overlaySnapshot.forEach((frameRect) => {
+        // mappedOverlays는 뷰포트 좌표(미러링 포함)라서, 캔버스 미러링 상태에선 다시 뒤집어야 동일 위치가 된다.
+        const drawX = outWidth - (frameRect.x + frameRect.width);
+        finalCtx.drawImage(
           frameImage,
-          frameRect.x,
+          drawX,
           frameRect.y,
           frameRect.width,
           frameRect.height,
@@ -485,9 +529,10 @@ export default function Home() {
       });
     }
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    const dataUrl = finalCanvas.toDataURL("image/jpeg", 0.92);
 
-    addPhoto(dataUrl);
+    const stored = addPhoto(dataUrl);
+    void upsertRawPhoto(stored.id, rawDataUrl);
     setCapturedFrame(dataUrl);
     setCapturePhase("freeze");
     setShowShutterFlash(true);
@@ -509,7 +554,7 @@ export default function Home() {
     cameraActive,
     isCapturingTransition,
     isBunnyFilter,
-    overlayRects,
+    mappedOverlays,
     playShutterSound,
     router,
     selectedFilter.cssFilter,

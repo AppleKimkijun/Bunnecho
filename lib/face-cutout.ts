@@ -4,7 +4,7 @@ const FRAME_SCALE = 2.55;
 const OUTPUT_SIZE = 320;
 const BUNNY_FRAME_URL =
   "/img/%ED%94%84%EB%A0%88%EC%9E%84%201_%ED%86%A0%EB%81%BC.png";
-const BUNNY_HOLE_CENTER_Y_RATIO = 0.66;
+const BUNNY_HOLE_CENTER_Y_RATIO = 0.61;
 const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.08;
 
 function loadImage(src: string) {
@@ -55,17 +55,13 @@ function drawInsideFrameMask(
   }
 
   maskContext.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-  if (frameImage) {
-    maskContext.drawImage(frameImage, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-  }
-
   maskContext.fillStyle = "#fff";
   maskContext.beginPath();
   maskContext.ellipse(
     OUTPUT_SIZE / 2,
     OUTPUT_SIZE * BUNNY_HOLE_CENTER_Y_RATIO,
-    OUTPUT_SIZE * 0.325,
-    OUTPUT_SIZE * 0.43,
+    OUTPUT_SIZE * 0.265,
+    OUTPUT_SIZE * 0.335,
     0,
     0,
     Math.PI * 2,
