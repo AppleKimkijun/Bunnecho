@@ -52,7 +52,7 @@ function makeBubble(
   width: number,
   height: number,
 ): Bubble {
-  const size = seedRange(`${item.id}-size`, 96, 164);
+  const size = seedRange(`${item.id}-size`, 120, 164);
   const maxX = Math.max(width - size, 1);
   const maxY = Math.max(height - size, 1);
 
