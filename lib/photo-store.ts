@@ -127,6 +127,10 @@ export function removePhoto(id: string) {
   writePhotos(photos.filter((photo) => photo.id !== id));
 }
 
+export function clearPhotos() {
+  writePhotos([]);
+}
+
 export function subscribePhotos(listener: () => void) {
   listeners.add(listener);
   return () => {

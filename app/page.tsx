@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addPhoto } from "@/lib/photo-store";
+import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 
 type CameraFilter = {
   id: string;
@@ -12,6 +13,13 @@ type CameraFilter = {
 };
 
 const CAMERA_FILTERS: CameraFilter[] = [
+  {
+    id: "bunny",
+    name: "버니 필터",
+    cssFilter: "brightness(1.05) saturate(1.12)",
+    overlay:
+      "linear-gradient(180deg, rgba(255,189,214,0.2), rgba(255,255,255,0.06))",
+  },
   { id: "normal", name: "기본", cssFilter: "none", overlay: "transparent" },
   {
     id: "princess",
@@ -147,12 +155,57 @@ const CAMERA_FILTERS: CameraFilter[] = [
   },
 ];
 
+const BUNNY_FRAME_URL =
+  "/img/%ED%94%84%EB%A0%88%EC%9E%84%201_%ED%86%A0%EB%81%BC.png";
+const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.08;
+
+type OverlayRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+function getFrameBox(face: FaceBox) {
+  const size = Math.max(face.width, face.height) * 2.55;
+  const x = face.x + face.width / 2 - size / 2;
+  const y =
+    face.y + face.height - size + face.height * BUNNY_BOTTOM_OFFSET_FACE_RATIO;
+  return { x, y, width: size, height: size };
+}
+
 function chunkByTen<T>(items: T[]) {
   const result: T[][] = [];
   for (let index = 0; index < items.length; index += 10) {
     result.push(items.slice(index, index + 10));
   }
   return result;
+}
+
+function mapVideoRectToViewport(
+  rect: OverlayRect,
+  videoWidth: number,
+  videoHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+) {
+  const scale = Math.max(
+    viewportWidth / videoWidth,
+    viewportHeight / videoHeight,
+  );
+  const renderWidth = videoWidth * scale;
+  const renderHeight = videoHeight * scale;
+  const offsetX = (viewportWidth - renderWidth) / 2;
+  const offsetY = (viewportHeight - renderHeight) / 2;
+
+  const xMirrored = viewportWidth - (offsetX + (rect.x + rect.width) * scale);
+
+  return {
+    x: xMirrored,
+    y: offsetY + rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+  };
 }
 
 export default function Home() {
@@ -165,20 +218,32 @@ export default function Home() {
     "checking" | "prompt" | "requesting" | "granted" | "denied"
   >("checking");
   const [message, setMessage] = useState("카메라 권한을 확인하는 중입니다.");
-  const [selectedFilterId, setSelectedFilterId] = useState("normal");
+  const [selectedFilterId, setSelectedFilterId] = useState("bunny");
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [capturePhase, setCapturePhase] = useState<"idle" | "freeze" | "slide">(
     "idle",
   );
   const [showShutterFlash, setShowShutterFlash] = useState(false);
+  const [overlayRects, setOverlayRects] = useState<OverlayRect[]>([]);
+  const [mappedOverlays, setMappedOverlays] = useState<OverlayRect[]>([]);
+
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const frameImageRef = useRef<HTMLImageElement | null>(null);
 
   const selectedFilter =
     CAMERA_FILTERS.find((filter) => filter.id === selectedFilterId) ??
     CAMERA_FILTERS[0];
   const pagedFilters = useMemo(() => chunkByTen(CAMERA_FILTERS), []);
+  const isBunnyFilter = selectedFilter.id === "bunny";
   const showPermissionModal = permissionState !== "granted";
   const isDenied = permissionState === "denied";
   const isCapturingTransition = capturedFrame !== null;
+
+  useEffect(() => {
+    const image = new Image();
+    image.src = BUNNY_FRAME_URL;
+    frameImageRef.current = image;
+  }, []);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -257,6 +322,78 @@ export default function Home() {
     }
   }, [startCamera]);
 
+  useEffect(() => {
+    if (!cameraActive || !isBunnyFilter) {
+      return;
+    }
+
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    let isRunning = true;
+    const intervalId = window.setInterval(() => {
+      void detectFacesInVideo(video).then((detectedFace) => {
+        if (!isRunning) {
+          return;
+        }
+
+        if (!detectedFace || detectedFace.length === 0) {
+          setOverlayRects([]);
+          return;
+        }
+
+        const sorted = [...detectedFace]
+          .sort((a, b) => b.width * b.height - a.width * a.height)
+          .slice(0, 6);
+
+        setOverlayRects(sorted.map((face) => getFrameBox(face)));
+      });
+    }, 220);
+
+    return () => {
+      isRunning = false;
+      window.clearInterval(intervalId);
+    };
+  }, [cameraActive, isBunnyFilter]);
+
+  useEffect(() => {
+    const updateMapped = () => {
+      const video = videoRef.current;
+      const viewport = viewportRef.current;
+
+      if (
+        overlayRects.length === 0 ||
+        !video ||
+        !viewport ||
+        !video.videoWidth ||
+        !video.videoHeight
+      ) {
+        setMappedOverlays([]);
+        return;
+      }
+
+      setMappedOverlays(
+        overlayRects.map((rect) =>
+          mapVideoRectToViewport(
+            rect,
+            video.videoWidth,
+            video.videoHeight,
+            viewport.clientWidth,
+            viewport.clientHeight,
+          ),
+        ),
+      );
+    };
+
+    updateMapped();
+    window.addEventListener("resize", updateMapped);
+    return () => {
+      window.removeEventListener("resize", updateMapped);
+    };
+  }, [overlayRects]);
+
   const playShutterSound = useCallback(() => {
     const AudioContextClass =
       window.AudioContext ||
@@ -330,6 +467,24 @@ export default function Home() {
     context.translate(width, 0);
     context.scale(-1, 1);
     context.drawImage(video, 0, 0, width, height);
+
+    if (
+      isBunnyFilter &&
+      overlayRects.length > 0 &&
+      frameImageRef.current?.complete
+    ) {
+      const frameImage = frameImageRef.current;
+      overlayRects.forEach((frameRect) => {
+        context.drawImage(
+          frameImage,
+          frameRect.x,
+          frameRect.y,
+          frameRect.width,
+          frameRect.height,
+        );
+      });
+    }
+
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
 
     addPhoto(dataUrl);
@@ -353,6 +508,8 @@ export default function Home() {
   }, [
     cameraActive,
     isCapturingTransition,
+    isBunnyFilter,
+    overlayRects,
     playShutterSound,
     router,
     selectedFilter.cssFilter,
@@ -386,7 +543,10 @@ export default function Home() {
   }, [capturePhoto]);
 
   return (
-    <main className="relative min-h-svh w-full overflow-hidden bg-black text-white">
+    <main
+      ref={viewportRef}
+      className="relative min-h-svh w-full overflow-hidden bg-black text-white"
+    >
       <video
         ref={videoRef}
         className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
@@ -411,6 +571,23 @@ export default function Home() {
       {showShutterFlash && (
         <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/85" />
       )}
+
+      {isBunnyFilter &&
+        cameraActive &&
+        mappedOverlays.map((mappedOverlay, index) => (
+          <img
+            key={`bunny-overlay-${index}`}
+            src={BUNNY_FRAME_URL}
+            alt="토끼 프레임"
+            className="pointer-events-none absolute z-20 select-none"
+            style={{
+              left: `${mappedOverlay.x}px`,
+              top: `${mappedOverlay.y}px`,
+              width: `${mappedOverlay.width}px`,
+              height: `${mappedOverlay.height}px`,
+            }}
+          />
+        ))}
 
       {capturedFrame && (
         <div

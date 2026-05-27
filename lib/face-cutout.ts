@@ -1,3 +1,12 @@
+import { detectFacesInImage, type FaceBox } from "@/lib/face-detection";
+
+const FRAME_SCALE = 2.55;
+const OUTPUT_SIZE = 320;
+const BUNNY_FRAME_URL =
+  "/img/%ED%94%84%EB%A0%88%EC%9E%84%201_%ED%86%A0%EB%81%BC.png";
+const BUNNY_HOLE_CENTER_Y_RATIO = 0.66;
+const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.08;
+
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
@@ -7,82 +16,92 @@ function loadImage(src: string) {
   });
 }
 
-function detectFaceLikeBounds(
-  imageData: ImageData,
-  width: number,
-  height: number,
+function drawInsideFrameMask(
+  sourceCanvas: HTMLCanvasElement,
+  cropX: number,
+  cropY: number,
+  frameSize: number,
+  frameImage: HTMLImageElement | null,
 ) {
-  let minX = width;
-  let minY = height;
-  let maxX = -1;
-  let maxY = -1;
-  let count = 0;
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = OUTPUT_SIZE;
+  outputCanvas.height = OUTPUT_SIZE;
+  const outputContext = outputCanvas.getContext("2d");
 
-  const step = 3;
-
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const index = (y * width + x) * 4;
-      const r = imageData.data[index];
-      const g = imageData.data[index + 1];
-      const b = imageData.data[index + 2];
-
-      // Simple skin-range estimation in YCrCb-like space.
-      const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
-      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
-      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-
-      const isSkin =
-        yVal > 45 &&
-        cb > 77 &&
-        cb < 127 &&
-        cr > 133 &&
-        cr < 173 &&
-        r > g &&
-        r > b;
-
-      if (!isSkin) {
-        continue;
-      }
-
-      count += 1;
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
+  if (!outputContext) {
+    throw new Error("결과 캔버스 초기화 실패");
   }
 
-  if (count < 150 || maxX < 0 || maxY < 0) {
-    const size = Math.floor(Math.min(width, height) * 0.5);
-    return {
-      x: Math.floor((width - size) / 2),
-      y: Math.floor((height - size) / 2),
-      size,
-    };
+  outputContext.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+  outputContext.drawImage(
+    sourceCanvas,
+    cropX,
+    cropY,
+    frameSize,
+    frameSize,
+    0,
+    0,
+    OUTPUT_SIZE,
+    OUTPUT_SIZE,
+  );
+
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = OUTPUT_SIZE;
+  maskCanvas.height = OUTPUT_SIZE;
+  const maskContext = maskCanvas.getContext("2d");
+
+  if (!maskContext) {
+    throw new Error("마스크 캔버스 초기화 실패");
   }
 
-  const boxWidth = maxX - minX;
-  const boxHeight = maxY - minY;
-  const size = Math.floor(Math.max(boxWidth, boxHeight) * 1.25);
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
+  maskContext.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+  if (frameImage) {
+    maskContext.drawImage(frameImage, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+  }
 
-  let x = Math.floor(centerX - size / 2);
-  let y = Math.floor(centerY - size / 2);
+  maskContext.fillStyle = "#fff";
+  maskContext.beginPath();
+  maskContext.ellipse(
+    OUTPUT_SIZE / 2,
+    OUTPUT_SIZE * BUNNY_HOLE_CENTER_Y_RATIO,
+    OUTPUT_SIZE * 0.325,
+    OUTPUT_SIZE * 0.43,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  maskContext.closePath();
+  maskContext.fill();
 
-  x = Math.max(0, Math.min(width - size, x));
-  y = Math.max(0, Math.min(height - size, y));
+  outputContext.globalCompositeOperation = "destination-in";
+  outputContext.drawImage(maskCanvas, 0, 0);
+  outputContext.globalCompositeOperation = "source-over";
 
-  return {
-    x,
-    y,
-    size: Math.max(80, Math.min(size, Math.min(width, height))),
-  };
+  if (frameImage) {
+    outputContext.drawImage(frameImage, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+  }
+
+  return outputCanvas.toDataURL("image/png");
 }
 
-export async function createFaceCutoutDataUrl(photoDataUrl: string) {
+function resolveFrameCrop(faceBox: FaceBox, image: HTMLImageElement) {
+  const frameSize = Math.max(faceBox.width, faceBox.height) * FRAME_SCALE;
+  let cropX = faceBox.x + faceBox.width / 2 - frameSize / 2;
+  let cropY =
+    faceBox.y +
+    faceBox.height -
+    frameSize +
+    faceBox.height * BUNNY_BOTTOM_OFFSET_FACE_RATIO;
+
+  cropX = Math.max(0, Math.min(image.width - frameSize, cropX));
+  cropY = Math.max(0, Math.min(image.height - frameSize, cropY));
+
+  return { cropX, cropY, frameSize };
+}
+
+export async function createFaceCutoutDataUrls(photoDataUrl: string) {
   const image = await loadImage(photoDataUrl);
+  const frameImage = await loadImage(BUNNY_FRAME_URL).catch(() => null);
 
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = image.width;
@@ -94,38 +113,36 @@ export async function createFaceCutoutDataUrl(photoDataUrl: string) {
   }
 
   sourceContext.drawImage(image, 0, 0);
-  const imageData = sourceContext.getImageData(0, 0, image.width, image.height);
-  const bounds = detectFaceLikeBounds(imageData, image.width, image.height);
+  const detectedFaces = await detectFacesInImage(image);
 
-  const outputSize = 320;
-  const outputCanvas = document.createElement("canvas");
-  outputCanvas.width = outputSize;
-  outputCanvas.height = outputSize;
-  const outputContext = outputCanvas.getContext("2d");
+  const fallbackSize = Math.floor(Math.min(image.width, image.height) * 0.42);
+  const fallback = {
+    x: Math.floor((image.width - fallbackSize) / 2),
+    y: Math.floor((image.height - fallbackSize) / 2),
+    width: fallbackSize,
+    height: fallbackSize,
+  };
 
-  if (!outputContext) {
-    throw new Error("결과 캔버스 초기화 실패");
-  }
+  const faceBoxes =
+    detectedFaces.length > 0
+      ? [...detectedFaces]
+          .sort((a, b) => b.width * b.height - a.width * a.height)
+          .slice(0, 8)
+      : [fallback];
 
-  outputContext.clearRect(0, 0, outputSize, outputSize);
-  outputContext.save();
-  outputContext.beginPath();
-  outputContext.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, Math.PI * 2);
-  outputContext.closePath();
-  outputContext.clip();
+  return faceBoxes.map((faceBox) => {
+    const { cropX, cropY, frameSize } = resolveFrameCrop(faceBox, image);
+    return drawInsideFrameMask(
+      sourceCanvas,
+      cropX,
+      cropY,
+      frameSize,
+      frameImage,
+    );
+  });
+}
 
-  outputContext.drawImage(
-    sourceCanvas,
-    bounds.x,
-    bounds.y,
-    bounds.size,
-    bounds.size,
-    0,
-    0,
-    outputSize,
-    outputSize,
-  );
-  outputContext.restore();
-
-  return outputCanvas.toDataURL("image/png");
+export async function createFaceCutoutDataUrl(photoDataUrl: string) {
+  const cutouts = await createFaceCutoutDataUrls(photoDataUrl);
+  return cutouts[0];
 }

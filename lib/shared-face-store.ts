@@ -1,4 +1,5 @@
 export type SharedFaceItem = {
+  id: string;
   photoId: string;
   dataUrl: string;
   createdAt: string;
@@ -30,8 +31,42 @@ function readRaw() {
   }
 
   try {
-    const parsed = JSON.parse(raw) as SharedFaceItem[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        const typed = item as Partial<SharedFaceItem>;
+        const id =
+          typeof typed.id === "string" && typed.id.length > 0
+            ? typed.id
+            : typeof typed.photoId === "string"
+              ? typed.photoId
+              : null;
+
+        if (
+          !id ||
+          typeof typed.photoId !== "string" ||
+          typeof typed.dataUrl !== "string" ||
+          typeof typed.createdAt !== "string"
+        ) {
+          return null;
+        }
+
+        return {
+          id,
+          photoId: typed.photoId,
+          dataUrl: typed.dataUrl,
+          createdAt: typed.createdAt,
+        } satisfies SharedFaceItem;
+      })
+      .filter((item): item is SharedFaceItem => item !== null);
   } catch {
     return [];
   }
@@ -63,8 +98,9 @@ export function listSharedFaces() {
 
 export function upsertSharedFace(photoId: string, dataUrl: string) {
   const items = listSharedFaces();
-  const index = items.findIndex((item) => item.photoId === photoId);
+  const index = items.findIndex((item) => item.id === photoId);
   const nextItem: SharedFaceItem = {
+    id: photoId,
     photoId,
     dataUrl,
     createdAt: new Date().toISOString(),
@@ -77,6 +113,26 @@ export function upsertSharedFace(photoId: string, dataUrl: string) {
   }
 
   writeRaw([...items, nextItem]);
+}
+
+export function upsertSharedFaces(photoId: string, dataUrls: string[]) {
+  const items = listSharedFaces();
+  const createdAt = new Date().toISOString();
+
+  const nextItems = dataUrls.map((dataUrl, index) => ({
+    id: `${photoId}:${index}`,
+    photoId,
+    dataUrl,
+    createdAt,
+  }));
+
+  const nextIds = new Set(nextItems.map((item) => item.id));
+  const filtered = items.filter((item) => !nextIds.has(item.id));
+  writeRaw([...filtered, ...nextItems]);
+}
+
+export function clearSharedFaces() {
+  writeRaw([]);
 }
 
 export function subscribeSharedFaces(listener: () => void) {
