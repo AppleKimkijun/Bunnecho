@@ -1,0 +1,123 @@
+---
+alwaysApply: false
+---
+
+description: |
+Supabase 마이그레이션은 반드시 TypeScript 스크립트로 실행.
+supabase CLI 명령어나 SQL Editor 직접 실행은 사용하지 않음.
+globs:
+
+- "scripts/\*_/_.ts"
+- "supabase/migrations/\*_/_.sql"
+  alwaysApply: false
+
+---
+
+# Supabase 마이그레이션 규칙
+
+## 핵심 원칙
+
+- **모든 마이그레이션은 로컬 TypeScript 스크립트로 실행**
+- Supabase Management API를 통해 SQL 실행
+- `supabase db push`, `supabase db reset`, SQL Editor 직접 실행 금지
+
+## 필수 구현 사항
+
+### 1. 스크립트 기반 실행
+
+```typescript
+// scripts/run-migration.ts 패턴
+- .env.local에서 환경변수 로드
+- NEXT_PUBLIC_SUPABASE_URL → projectRef 추출
+- SUPABASE_SECRET_KEY → Management API 인증
+- readFileSync로 SQL 파일 읽기
+- Management API로 실행: POST /v1/projects/{projectRef}/database/query
+```
+
+### 2. package.json 스크립트
+
+마이그레이션과 seed는 **각각 독립적인 스크립트**로 분리하여 실행합니다.
+이전에 실행된 마이그레이션을 중복 실행하면 에러가 발생하므로, 각 파일별로 명령어를 분리합니다.
+
+```json
+{
+  "scripts": {
+    // 초기 스키마 생성 (최초 1회만 실행)
+    "db:init-schema": "tsx scripts/migrations/0001-init-schema.ts",
+
+    // Seed 데이터 삽입 (최초 1회만 실행)
+    "db:seed": "tsx scripts/migrations/0002-seed-data.ts",
+
+    // 새로운 마이그레이션 추가 시 (예시)
+    "db:add-categories": "tsx scripts/migrations/0003-add-categories.ts",
+    "db:add-payment-methods": "tsx scripts/migrations/0004-add-payment-methods.ts"
+  }
+}
+```
+
+**실행 순서:**
+
+```bash
+# 1. 최초 스키마 생성 (딱 1번만)
+yarn db:init-schema
+
+# 2. 샘플 데이터 삽입 (딱 1번만)
+yarn db:seed
+
+# 3. 이후 추가 마이그레이션 (필요시)
+yarn db:add-categories
+```
+
+**주의사항:**
+
+- 각 스크립트는 **한 번만** 실행해야 합니다
+- 이미 실행한 스크립트를 재실행하면 중복 에러 발생
+- 새로운 마이그레이션 추가 시마다 새 스크립트 파일 + 새 package.json 명령어 생성
+
+**파일 구조:**
+
+```
+scripts/
+  migrations/
+    0001-init-schema.ts      → yarn db:init-schema
+    0002-seed-data.ts        → yarn db:seed
+    0003-add-categories.ts   → yarn db:add-categories
+```
+
+### 3. 환경변수 검증
+
+```typescript
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  throw new Error("NEXT_PUBLIC_SUPABASE_URL이 없습니다");
+}
+if (!process.env.SUPABASE_SECRET_KEY) {
+  throw new Error("SUPABASE_SECRET_KEY가 없습니다");
+}
+```
+
+### 4. 에러 처리
+
+- API 실패 시: status와 에러 메시지 출력
+- 복구 불가능한 경우만 SQL Editor 수동 실행 안내
+- **절대 CLI 명령어 제안 금지**
+
+## 새 마이그레이션 추가 시
+
+1. `supabase/migrations/NNNN_name.sql` 생성
+2. 해당 SQL을 실행하는 TS 스크립트 작성/업데이트
+3. package.json에 실행 명령 추가
+4. README에 `yarn db:run-migration` 명령만 안내
+
+## 금지 사항
+
+❌ `supabase db push`
+❌ `supabase db reset`
+❌ "Supabase CLI로 실행하세요"
+❌ SQL Editor에 직접 붙여넣기 (에러 시 최후 수단으로만)
+
+## 체크리스트
+
+- [ ] TypeScript 스크립트로 실행하는가?
+- [ ] Management API 사용하는가?
+- [ ] 환경변수 검증하는가?
+- [ ] CLI 명령어 대신 yarn 스크립트 안내하는가?
