@@ -1,0 +1,139 @@
+export type PhotoEdits = {
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  rotate: number;
+};
+
+export type StoredPhoto = {
+  id: string;
+  dataUrl: string;
+  createdAt: string;
+  title: string;
+  memo: string;
+  edits: PhotoEdits;
+};
+
+const STORAGE_KEY = "bunnecho-photos";
+const listeners = new Set<() => void>();
+const SERVER_SNAPSHOT: StoredPhoto[] = [];
+
+let isHydrated = false;
+let cachedPhotos: StoredPhoto[] = [];
+
+const defaultEdits: PhotoEdits = {
+  brightness: 100,
+  contrast: 100,
+  saturate: 100,
+  rotate: 0,
+};
+
+function canUseStorage() {
+  return typeof window !== "undefined";
+}
+
+function sortByCreatedAtDesc(photos: StoredPhoto[]) {
+  return [...photos].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
+function ensureHydrated() {
+  if (!canUseStorage() || isHydrated) {
+    return;
+  }
+  cachedPhotos = sortByCreatedAtDesc(readPhotos());
+  isHydrated = true;
+}
+
+function readPhotos(): StoredPhoto[] {
+  if (!canUseStorage()) {
+    return [];
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as StoredPhoto[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
+function writePhotos(photos: StoredPhoto[]) {
+  if (!canUseStorage()) {
+    return;
+  }
+  cachedPhotos = sortByCreatedAtDesc(photos);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedPhotos));
+  listeners.forEach((listener) => listener());
+}
+
+export function listPhotos() {
+  ensureHydrated();
+  return cachedPhotos;
+}
+
+export function getPhoto(id: string) {
+  ensureHydrated();
+  return cachedPhotos.find((photo) => photo.id === id) ?? null;
+}
+
+export function addPhoto(dataUrl: string) {
+  const next: StoredPhoto = {
+    id: crypto.randomUUID(),
+    dataUrl,
+    createdAt: new Date().toISOString(),
+    title: "",
+    memo: "",
+    edits: { ...defaultEdits },
+  };
+
+  const photos = listPhotos();
+  writePhotos([next, ...photos]);
+  return next;
+}
+
+export function updatePhoto(
+  id: string,
+  patch: Partial<Omit<StoredPhoto, "id" | "createdAt" | "dataUrl">>,
+) {
+  const photos = listPhotos();
+  const updated = photos.map((photo) => {
+    if (photo.id !== id) {
+      return photo;
+    }
+
+    return {
+      ...photo,
+      ...patch,
+      edits: {
+        ...photo.edits,
+        ...(patch.edits ?? {}),
+      },
+    };
+  });
+
+  writePhotos(updated);
+}
+
+export function removePhoto(id: string) {
+  const photos = listPhotos();
+  writePhotos(photos.filter((photo) => photo.id !== id));
+}
+
+export function subscribePhotos(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function getPhotosServerSnapshot() {
+  return SERVER_SNAPSHOT;
+}
