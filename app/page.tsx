@@ -217,7 +217,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "star",
     name: "별",
     imageSrc: "/img/particle/star.png",
-    count: 14,
+    count: 28,
     sizeRange: [46, 86],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -229,7 +229,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "apple",
     name: "사과",
     imageSrc: "/img/particle/apple.png",
-    count: 14,
+    count: 28,
     sizeRange: [46, 86],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -241,7 +241,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "bunny",
     name: "토끼",
     imageSrc: "/img/particle/bunny.png.png",
-    count: 14,
+    count: 28,
     sizeRange: [46, 86],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -253,7 +253,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "rose",
     name: "장미",
     imageSrc: "/img/particle/rose.png",
-    count: 14,
+    count: 28,
     sizeRange: [46, 86],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -265,7 +265,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "note",
     name: "음표",
     imageSrc: "/img/particle/note.png",
-    count: 14,
+    count: 28,
     sizeRange: [46, 86],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -352,6 +352,8 @@ function createParticleSeeds(preset: ParticlePreset): ParticleSeed[] {
     return [];
   }
 
+  const imageSrc = preset.imageSrc;
+
   const xRatios = shuffledRatios(preset.count);
   const timeRatios = shuffledRatios(preset.count);
 
@@ -386,7 +388,7 @@ function createParticleSeeds(preset: ParticlePreset): ParticleSeed[] {
       ),
       opacity: randomBetween(preset.opacityRange[0], preset.opacityRange[1]),
       color,
-      imageSrc: preset.imageSrc,
+      imageSrc,
     };
   });
 }
