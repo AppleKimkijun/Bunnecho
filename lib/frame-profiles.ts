@@ -21,7 +21,10 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "plain",
     name: "기본 필터",
     frameImageSrc: null,
-    cssFilter: "none",
+    // 캡처 결과 톤 보정 (미리보기에는 적용되지 않음)
+    // 밝기: brightness(1.03~1.10)
+    // 붉은기 완화: hue-rotate(0deg~4deg)
+    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
     overlay: "transparent",
     frameScale: 2.2,
     bottomOffsetFaceRatio: 0.15,
@@ -34,9 +37,8 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "bunny",
     name: "기본 버니 필터",
     frameImageSrc: "/img/frame/bunny.png",
-    cssFilter: "brightness(1.05) saturate(1.12)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,189,214,0.2), rgba(255,255,255,0.06))",
+    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
+    overlay: "transparent",
     frameScale: 2.2,
     bottomOffsetFaceRatio: 0.15,
     frameOffsetXFaceRatio: 0,
@@ -48,11 +50,10 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "lop_bunny",
     name: "롭 버니 필터",
     frameImageSrc: "/img/frame/lop_bunny.png",
-    cssFilter: "brightness(1.04) saturate(1.08) hue-rotate(2deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(212,203,255,0.18), rgba(255,255,255,0.06))",
+    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
+    overlay: "transparent",
     frameScale: 2,
-    bottomOffsetFaceRatio: 0.55,
+    bottomOffsetFaceRatio: 0.48,
     frameOffsetXFaceRatio: 0,
     frameOffsetYFaceRatio: 0,
     holeSeedXRatio: 0.5,

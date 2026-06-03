@@ -778,7 +778,7 @@ export default function Home() {
     }
 
     rawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    rawCtx.filter = selectedFilter.cssFilter;
+    rawCtx.filter = "none";
     rawCtx.translate(outWidth, 0);
     rawCtx.scale(-1, 1);
     rawCtx.translate(CAPTURE_X_NUDGE_PX, 0);
@@ -917,7 +917,7 @@ export default function Home() {
           isDenied ? "opacity-0" : "opacity-100"
         }`}
         style={{
-          filter: selectedFilter.cssFilter,
+          filter: "none",
           transform: "scaleX(-1)",
         }}
         muted
@@ -927,7 +927,7 @@ export default function Home() {
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: isDenied ? "rgba(0,0,0,1)" : selectedFilter.overlay,
+          background: isDenied ? "rgba(0,0,0,1)" : "transparent",
           boxShadow: "inset 0 0 120px rgba(0,0,0,0.35)",
         }}
       />
