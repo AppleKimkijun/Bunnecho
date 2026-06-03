@@ -18,6 +18,7 @@ export type StoredFrameOverlay = {
 export type StoredPhotoOverlaySnapshot = {
   photoId: string;
   createdAt: string;
+  frameFilterId: string;
   particles: StoredParticleOverlay[];
   frames: StoredFrameOverlay[];
 };
@@ -58,6 +59,11 @@ function readRaw(): StoredPhotoOverlaySnapshot[] {
         ) {
           return null;
         }
+
+        const frameFilterId =
+          typeof typed.frameFilterId === "string" && typed.frameFilterId.length > 0
+            ? typed.frameFilterId
+            : "bunny";
 
         const framesSource = Array.isArray(typed.frames) ? typed.frames : [];
         const frames = framesSource
@@ -119,6 +125,7 @@ function readRaw(): StoredPhotoOverlaySnapshot[] {
         return {
           photoId: typed.photoId,
           createdAt: typed.createdAt,
+          frameFilterId,
           particles,
           frames,
         } satisfies StoredPhotoOverlaySnapshot;
@@ -143,6 +150,7 @@ export function getPhotoOverlaySnapshot(photoId: string) {
 
 export function upsertPhotoOverlaySnapshot(
   photoId: string,
+  frameFilterId: string,
   particles: StoredParticleOverlay[],
   frames: StoredFrameOverlay[] = [],
 ) {
@@ -150,6 +158,7 @@ export function upsertPhotoOverlaySnapshot(
   const next: StoredPhotoOverlaySnapshot = {
     photoId,
     createdAt: new Date().toISOString(),
+    frameFilterId,
     particles,
     frames,
   };

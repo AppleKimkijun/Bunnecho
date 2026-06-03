@@ -7,12 +7,21 @@ import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 import { PARTICLE_COLOR_PALETTE } from "@/lib/particle-colors";
 import { upsertPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
+import {
+  FRAME_PROFILES,
+  type FrameVariantId,
+} from "@/lib/frame-profiles";
 
 type CameraFilter = {
-  id: string;
+  id: FrameVariantId;
   name: string;
+  frameImageSrc: string | null;
   cssFilter: string;
   overlay: string;
+  frameScale: number;
+  bottomOffsetFaceRatio: number;
+  frameOffsetXFaceRatio: number;
+  frameOffsetYFaceRatio: number;
 };
 
 type ParticlePreset = {
@@ -53,152 +62,18 @@ type RenderedParticle = {
   imageSrc: string;
 };
 
-const CAMERA_FILTERS: CameraFilter[] = [
-  {
-    id: "bunny",
-    name: "버니 필터",
-    cssFilter: "brightness(1.05) saturate(1.12)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,189,214,0.2), rgba(255,255,255,0.06))",
-  },
-  { id: "normal", name: "기본", cssFilter: "none", overlay: "transparent" },
-  {
-    id: "princess",
-    name: "공주 필터",
-    cssFilter: "brightness(1.12) saturate(1.2) hue-rotate(-8deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,172,220,0.24), rgba(255,255,255,0.05))",
-  },
-  {
-    id: "prince",
-    name: "왕자님 필터",
-    cssFilter: "contrast(1.14) saturate(1.1) hue-rotate(8deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(103,188,255,0.24), rgba(16,31,94,0.08))",
-  },
-  {
-    id: "fishbowl",
-    name: "어항 필터",
-    cssFilter: "saturate(1.34) contrast(1.08) hue-rotate(16deg)",
-    overlay:
-      "radial-gradient(circle at center, rgba(109,226,255,0.06), rgba(0,97,176,0.34))",
-  },
-  {
-    id: "movie",
-    name: "영화관 필터",
-    cssFilter: "contrast(1.28) saturate(0.86)",
-    overlay: "linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.36))",
-  },
-  {
-    id: "dream",
-    name: "꿈속 필터",
-    cssFilter: "brightness(1.07) blur(0.3px) saturate(1.22)",
-    overlay:
-      "linear-gradient(180deg, rgba(180,155,255,0.2), rgba(255,255,255,0.04))",
-  },
-  {
-    id: "mint",
-    name: "민트소다",
-    cssFilter: "hue-rotate(24deg) saturate(1.22)",
-    overlay:
-      "linear-gradient(180deg, rgba(80,255,220,0.14), rgba(2,81,80,0.2))",
-  },
-  {
-    id: "sunset",
-    name: "노을빛",
-    cssFilter: "brightness(1.05) saturate(1.25) hue-rotate(-16deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,149,102,0.25), rgba(77,42,255,0.1))",
-  },
-  {
-    id: "retro",
-    name: "레트로",
-    cssFilter: "sepia(0.32) contrast(1.15) saturate(0.88)",
-    overlay:
-      "linear-gradient(180deg, rgba(240,207,140,0.16), rgba(72,45,14,0.17))",
-  },
-  {
-    id: "blackwhite",
-    name: "흑백",
-    cssFilter: "grayscale(1) contrast(1.16)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,255,255,0.1), rgba(12,12,12,0.25))",
-  },
-  {
-    id: "candy",
-    name: "캔디",
-    cssFilter: "saturate(1.4) hue-rotate(-12deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,107,171,0.18), rgba(255,201,107,0.1))",
-  },
-  {
-    id: "forest",
-    name: "숲속",
-    cssFilter: "hue-rotate(32deg) contrast(1.05)",
-    overlay:
-      "linear-gradient(180deg, rgba(93,189,120,0.2), rgba(15,75,34,0.24))",
-  },
-  {
-    id: "neon",
-    name: "네온",
-    cssFilter: "contrast(1.22) saturate(1.42) hue-rotate(42deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(28,255,242,0.15), rgba(248,27,255,0.12))",
-  },
-  {
-    id: "cool",
-    name: "쿨톤",
-    cssFilter: "brightness(1.03) hue-rotate(12deg) saturate(1.1)",
-    overlay:
-      "linear-gradient(180deg, rgba(158,215,255,0.2), rgba(20,42,71,0.08))",
-  },
-  {
-    id: "warm",
-    name: "웜톤",
-    cssFilter: "brightness(1.06) hue-rotate(-10deg) saturate(1.1)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,198,126,0.2), rgba(97,54,18,0.12))",
-  },
-  {
-    id: "grain",
-    name: "필름그레인",
-    cssFilter: "contrast(1.15) saturate(0.9)",
-    overlay:
-      "radial-gradient(circle, rgba(255,255,255,0.05), rgba(0,0,0,0.28))",
-  },
-  {
-    id: "strawberry",
-    name: "딸기우유",
-    cssFilter: "brightness(1.08) saturate(1.26) hue-rotate(-18deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(255,169,196,0.22), rgba(255,236,246,0.08))",
-  },
-  {
-    id: "blueberry",
-    name: "블루베리",
-    cssFilter: "brightness(1.02) saturate(1.1) hue-rotate(22deg)",
-    overlay:
-      "linear-gradient(180deg, rgba(126,157,255,0.23), rgba(44,56,130,0.13))",
-  },
-  {
-    id: "vintagepink",
-    name: "빈티지핑크",
-    cssFilter: "sepia(0.2) brightness(1.05) saturate(1.14)",
-    overlay:
-      "linear-gradient(180deg, rgba(230,155,186,0.2), rgba(76,38,55,0.1))",
-  },
-  {
-    id: "moon",
-    name: "달빛",
-    cssFilter: "brightness(1.1) contrast(1.1) saturate(0.92)",
-    overlay:
-      "linear-gradient(180deg, rgba(201,225,255,0.2), rgba(14,26,55,0.2))",
-  },
-];
+const CAMERA_FILTERS: CameraFilter[] = FRAME_PROFILES.map((profile) => ({
+  id: profile.id,
+  name: profile.name,
+  frameImageSrc: profile.frameImageSrc,
+  cssFilter: profile.cssFilter,
+  overlay: profile.overlay,
+  frameScale: profile.frameScale,
+  bottomOffsetFaceRatio: profile.bottomOffsetFaceRatio,
+  frameOffsetXFaceRatio: profile.frameOffsetXFaceRatio,
+  frameOffsetYFaceRatio: profile.frameOffsetYFaceRatio,
+}));
 
-const BUNNY_FRAME_URL = "/img/frame/bunny.png";
-const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.15;
-const BUNNY_FRAME_SCALE = 2.2;
 const TWO_PI = Math.PI * 2;
 
 const PARTICLE_PRESETS: ParticlePreset[] = [
@@ -283,11 +158,19 @@ type OverlayRect = {
   height: number;
 };
 
-function getFrameBox(face: FaceBox) {
-  const size = Math.max(face.width, face.height) * BUNNY_FRAME_SCALE;
-  const x = face.x + face.width / 2 - size / 2;
+function getFrameBox(face: FaceBox, filter: CameraFilter) {
+  const size = Math.max(face.width, face.height) * filter.frameScale;
+  const x =
+    face.x +
+    face.width / 2 -
+    size / 2 +
+    face.width * filter.frameOffsetXFaceRatio;
   const y =
-    face.y + face.height - size + face.height * BUNNY_BOTTOM_OFFSET_FACE_RATIO;
+    face.y +
+    face.height -
+    size +
+    face.height * filter.bottomOffsetFaceRatio +
+    face.height * filter.frameOffsetYFaceRatio;
   return { x, y, width: size, height: size };
 }
 
@@ -470,7 +353,9 @@ export default function Home() {
     "checking" | "prompt" | "requesting" | "granted" | "denied"
   >("checking");
   const [message, setMessage] = useState("카메라 권한을 확인하는 중입니다.");
-  const [selectedFilterId, setSelectedFilterId] = useState("bunny");
+  const [selectedFilterId, setSelectedFilterId] = useState<FrameVariantId>(
+    "bunny",
+  );
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [capturePhase, setCapturePhase] = useState<"idle" | "freeze" | "slide">(
     "idle",
@@ -485,7 +370,7 @@ export default function Home() {
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const frameImageRef = useRef<HTMLImageElement | null>(null);
+  const frameImageMapRef = useRef<Record<string, HTMLImageElement>>({});
   const particleAnimationStartRef = useRef(0);
   const overlayImageRefs = useRef<Array<HTMLImageElement | null>>([]);
   const particleNodeRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -498,7 +383,7 @@ export default function Home() {
     PARTICLE_PRESETS.find((particle) => particle.id === selectedParticleId) ??
     PARTICLE_PRESETS[0];
   const pagedFilters = useMemo(() => chunkByTen(CAMERA_FILTERS), []);
-  const isBunnyFilter = selectedFilter.id === "bunny";
+  const hasFrameFilter = selectedFilter.frameImageSrc !== null;
   const showPermissionModal = permissionState !== "granted";
   const isDenied = permissionState === "denied";
   const isCapturingTransition = capturedFrame !== null;
@@ -520,9 +405,9 @@ export default function Home() {
   useEffect(() => {
     overlayImageRefs.current = overlayImageRefs.current.slice(
       0,
-      mappedOverlays.length,
+      hasFrameFilter ? mappedOverlays.length : 0,
     );
-  }, [mappedOverlays.length]);
+  }, [hasFrameFilter, mappedOverlays.length]);
 
   useEffect(() => {
     particleNodeRefs.current = particleNodeRefs.current.slice(
@@ -532,9 +417,14 @@ export default function Home() {
   }, [renderedParticles.length]);
 
   useEffect(() => {
-    const image = new Image();
-    image.src = BUNNY_FRAME_URL;
-    frameImageRef.current = image;
+    CAMERA_FILTERS.forEach((filter) => {
+      if (!filter.frameImageSrc) {
+        return;
+      }
+      const image = new Image();
+      image.src = filter.frameImageSrc;
+      frameImageMapRef.current[filter.frameImageSrc] = image;
+    });
 
     PARTICLE_PRESETS.forEach((preset) => {
       if (!preset.imageSrc) {
@@ -673,7 +563,8 @@ export default function Home() {
   }, [startCamera]);
 
   useEffect(() => {
-    if (!cameraActive || !isBunnyFilter) {
+    if (!cameraActive || !hasFrameFilter) {
+      setOverlayRects([]);
       return;
     }
 
@@ -698,7 +589,7 @@ export default function Home() {
           .sort((a, b) => b.width * b.height - a.width * a.height)
           .slice(0, 6);
 
-        setOverlayRects(sorted.map((face) => getFrameBox(face)));
+        setOverlayRects(sorted.map((face) => getFrameBox(face, selectedFilter)));
       });
     }, 220);
 
@@ -706,7 +597,7 @@ export default function Home() {
       isRunning = false;
       window.clearInterval(intervalId);
     };
-  }, [cameraActive, isBunnyFilter]);
+  }, [cameraActive, hasFrameFilter, selectedFilter]);
 
   useEffect(() => {
     const updateMapped = () => {
@@ -912,15 +803,13 @@ export default function Home() {
     finalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     finalCtx.filter = "none";
 
-    if (
-      isBunnyFilter &&
-      overlaySnapshot.length > 0 &&
-      frameImageRef.current?.complete
-    ) {
-      const frameImage = frameImageRef.current;
+    const selectedFrameImage = selectedFilter.frameImageSrc
+      ? frameImageMapRef.current[selectedFilter.frameImageSrc] ?? null
+      : null;
+    if (overlaySnapshot.length > 0 && selectedFrameImage?.complete) {
       overlaySnapshot.forEach((frameRect) => {
         finalCtx.drawImage(
-          frameImage,
+          selectedFrameImage,
           frameRect.x,
           frameRect.y,
           frameRect.width,
@@ -946,6 +835,7 @@ export default function Home() {
     const sizeBase = Math.max(1, Math.min(outWidth, outHeight));
     upsertPhotoOverlaySnapshot(
       stored.id,
+      selectedFilter.id,
       particleSnapshot.map((particle) => ({
         xRatio: particle.x / outWidth,
         yRatio: particle.y / outHeight,
@@ -982,9 +872,10 @@ export default function Home() {
   }, [
     cameraActive,
     isCapturingTransition,
-    isBunnyFilter,
     playShutterSound,
     router,
+    selectedFilter.frameImageSrc,
+    selectedFilter.id,
     selectedFilter.cssFilter,
   ]);
 
@@ -1081,16 +972,16 @@ export default function Home() {
         </div>
       )}
 
-      {isBunnyFilter &&
-        cameraActive &&
+      {cameraActive &&
+        hasFrameFilter &&
         mappedOverlays.map((mappedOverlay, index) => (
           <img
-            key={`bunny-overlay-${index}`}
+            key={`frame-overlay-${index}`}
             ref={(node) => {
               overlayImageRefs.current[index] = node;
             }}
-            src={BUNNY_FRAME_URL}
-            alt="토끼 프레임"
+            src={selectedFilter.frameImageSrc ?? undefined}
+            alt={`${selectedFilter.name} 프레임`}
             className="pointer-events-none absolute z-20 select-none"
             style={{
               left: `${mappedOverlay.x}px`,

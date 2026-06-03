@@ -1,4 +1,5 @@
 import { detectFacesInImage, type FaceBox } from "@/lib/face-detection";
+import { getFrameProfileById } from "@/lib/frame-profiles";
 import type {
   StoredFrameOverlay,
   StoredPhotoOverlaySnapshot,
@@ -8,19 +9,13 @@ import type {
 const OUTPUT_SIZE = 320;
 
 type FrameCropProfile = {
-  frameImageSrc: string;
+  frameImageSrc: string | null;
   frameScale: number;
   bottomOffsetFaceRatio: number;
+  frameOffsetXFaceRatio: number;
+  frameOffsetYFaceRatio: number;
   holeSeedXRatio: number;
   holeSeedYRatio: number;
-};
-
-const BUNNY_CROP_PROFILE: FrameCropProfile = {
-  frameImageSrc: "/img/frame/bunny.png",
-  frameScale: 2.2,
-  bottomOffsetFaceRatio: 0.15,
-  holeSeedXRatio: 0.5,
-  holeSeedYRatio: 0.62,
 };
 
 const ALPHA_THRESHOLD = 16;
@@ -273,12 +268,17 @@ function resolveFrameCrop(
   profile: FrameCropProfile,
 ) {
   const frameSize = Math.max(faceBox.width, faceBox.height) * profile.frameScale;
-  let cropX = faceBox.x + faceBox.width / 2 - frameSize / 2;
+  let cropX =
+    faceBox.x +
+    faceBox.width / 2 -
+    frameSize / 2 +
+    faceBox.width * profile.frameOffsetXFaceRatio;
   let cropY =
     faceBox.y +
     faceBox.height -
     frameSize +
-    faceBox.height * profile.bottomOffsetFaceRatio;
+    faceBox.height * profile.bottomOffsetFaceRatio +
+    faceBox.height * profile.frameOffsetYFaceRatio;
 
   cropX = Math.max(0, Math.min(image.width - frameSize, cropX));
   cropY = Math.max(0, Math.min(image.height - frameSize, cropY));
@@ -372,10 +372,21 @@ export async function createBunnyShareCutoutDataUrls(
   photoDataUrl: string,
   overlaySnapshot: StoredPhotoOverlaySnapshot | null = null,
 ) {
+  const selectedProfile = getFrameProfileById(overlaySnapshot?.frameFilterId);
+  const cropProfile: FrameCropProfile = {
+    frameImageSrc: selectedProfile.frameImageSrc,
+    frameScale: selectedProfile.frameScale,
+    bottomOffsetFaceRatio: selectedProfile.bottomOffsetFaceRatio,
+    frameOffsetXFaceRatio: selectedProfile.frameOffsetXFaceRatio,
+    frameOffsetYFaceRatio: selectedProfile.frameOffsetYFaceRatio,
+    holeSeedXRatio: selectedProfile.holeSeedXRatio,
+    holeSeedYRatio: selectedProfile.holeSeedYRatio,
+  };
+
   const photoImage = await loadImage(photoDataUrl);
-  const frameImage = await loadImage(BUNNY_CROP_PROFILE.frameImageSrc).catch(
-    () => null,
-  );
+  const frameImage = cropProfile.frameImageSrc
+    ? await loadImage(cropProfile.frameImageSrc).catch(() => null)
+    : null;
 
   const particleImageMap = new Map<string, HTMLImageElement>();
   if (overlaySnapshot?.particles?.length) {
@@ -400,7 +411,7 @@ export async function createBunnyShareCutoutDataUrls(
         cropY,
         frameSize,
         frameImage,
-        BUNNY_CROP_PROFILE,
+        cropProfile,
         overlaySnapshot,
         particleImageMap,
       );
@@ -430,7 +441,7 @@ export async function createBunnyShareCutoutDataUrls(
     const { cropX, cropY, frameSize } = resolveFrameCrop(
       faceBox,
       photoImage,
-      BUNNY_CROP_PROFILE,
+      cropProfile,
     );
     return drawShareCrop(
       photoImage,
@@ -438,7 +449,7 @@ export async function createBunnyShareCutoutDataUrls(
       cropY,
       frameSize,
       frameImage,
-      BUNNY_CROP_PROFILE,
+      cropProfile,
       overlaySnapshot,
       particleImageMap,
     );
