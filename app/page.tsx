@@ -803,15 +803,20 @@ export default function Home() {
     }
 
     const viewport = viewportRef.current;
-    const outWidth = viewport?.clientWidth ?? width;
-    const outHeight = viewport?.clientHeight ?? height;
+    if (!viewport) {
+      setMessage("사진 캡처에 실패했습니다.");
+      return;
+    }
+
+    const outWidth = viewport.clientWidth ?? width;
+    const outHeight = viewport.clientHeight ?? height;
     if (!outWidth || !outHeight) {
       setMessage("사진 캡처에 실패했습니다.");
       return;
     }
 
     const viewportRect = viewport.getBoundingClientRect();
-    if (!viewportRect || !viewport) {
+    if (!viewportRect) {
       setMessage("사진 캡처에 실패했습니다.");
       return;
     }
