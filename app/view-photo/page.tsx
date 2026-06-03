@@ -9,6 +9,7 @@ import {
   listPhotos,
   subscribePhotos,
 } from "@/lib/photo-store";
+import { getPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
 import { upsertSharedFaces } from "@/lib/shared-face-store";
 
 const BG_URL = "/img/background/main-bg.png";
@@ -33,7 +34,11 @@ export default function ViewPhotoPage() {
     setShareMessage(null);
 
     try {
-      const faceCutouts = await createBunnyShareCutoutDataUrls(latestPhoto.dataUrl);
+      const overlaySnapshot = getPhotoOverlaySnapshot(latestPhoto.id);
+      const faceCutouts = await createBunnyShareCutoutDataUrls(
+        latestPhoto.dataUrl,
+        overlaySnapshot,
+      );
       upsertSharedFaces(`${latestPhoto.id}:bunny-v2`, faceCutouts);
       setShareMessage("공유 완료! 공유 화면에서 확인하세요.");
     } catch {

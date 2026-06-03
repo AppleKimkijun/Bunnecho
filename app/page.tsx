@@ -6,6 +6,7 @@ import { addPhoto } from "@/lib/photo-store";
 import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 import { PARTICLE_COLOR_PALETTE } from "@/lib/particle-colors";
+import { upsertPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
 
 type CameraFilter = {
   id: string;
@@ -942,6 +943,25 @@ export default function Home() {
 
     const stored = addPhoto(dataUrl);
     void upsertRawPhoto(stored.id, rawDataUrl);
+    const sizeBase = Math.max(1, Math.min(outWidth, outHeight));
+    upsertPhotoOverlaySnapshot(
+      stored.id,
+      particleSnapshot.map((particle) => ({
+        xRatio: particle.x / outWidth,
+        yRatio: particle.y / outHeight,
+        sizeRatio: particle.sizePx / sizeBase,
+        rotationDeg: particle.rotationDeg,
+        opacity: particle.opacity,
+        color: particle.color,
+        imageSrc: particle.imageSrc,
+      })),
+      overlaySnapshot.map((frame) => ({
+        xRatio: frame.x / outWidth,
+        yRatio: frame.y / outHeight,
+        widthRatio: frame.width / outWidth,
+        heightRatio: frame.height / outHeight,
+      })),
+    );
     setCapturedFrame(dataUrl);
     setCapturePhase("freeze");
     setShowShutterFlash(true);
