@@ -52,7 +52,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     overlay:
       "linear-gradient(180deg, rgba(212,203,255,0.18), rgba(255,255,255,0.06))",
     frameScale: 2,
-    bottomOffsetFaceRatio: 0.4,
+    bottomOffsetFaceRatio: 0.55,
     frameOffsetXFaceRatio: 0,
     frameOffsetYFaceRatio: 0,
     holeSeedXRatio: 0.5,
