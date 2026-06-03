@@ -9,10 +9,9 @@ import {
   listPhotos,
   subscribePhotos,
 } from "@/lib/photo-store";
-import { getRawPhoto } from "@/lib/photo-raw-store";
 import { upsertSharedFaces } from "@/lib/shared-face-store";
 
-const BG_URL = "/img/%EB%B2%84%EB%84%A4%EB%B0%B0%EA%B2%BD1.png";
+const BG_URL = "/img/background/main-bg.png";
 
 export default function ViewPhotoPage() {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
@@ -34,11 +33,7 @@ export default function ViewPhotoPage() {
     setShareMessage(null);
 
     try {
-      const shareSource =
-        (await getRawPhoto(latestPhoto.id)) ?? latestPhoto.dataUrl;
-      const faceCutouts = await createBunnyShareCutoutDataUrls(
-        shareSource,
-      );
+      const faceCutouts = await createBunnyShareCutoutDataUrls(latestPhoto.dataUrl);
       upsertSharedFaces(`${latestPhoto.id}:bunny-v2`, faceCutouts);
       setShareMessage("공유 완료! 공유 화면에서 확인하세요.");
     } catch {

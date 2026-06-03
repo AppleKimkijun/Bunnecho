@@ -128,3 +128,18 @@
     @apply font-sans;
   }
 }
+
+.particle-item {
+  line-height: 1;
+  text-shadow:
+    0 0 12px rgb(255 198 225 / 78%),
+    0 0 2px rgb(255 255 255 / 75%);
+  -webkit-text-stroke: 0.35px rgb(255 255 255 / 55%);
+  will-change: transform, top;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .particle-item {
+    transition: none;
+  }
+}

@@ -16,7 +16,7 @@ import {
   type SharedFaceItem,
 } from "@/lib/shared-face-store";
 
-const BG_URL = "/img/%EB%B2%84%EB%84%A4%EB%B0%B0%EA%B2%BD1.png";
+const BG_URL = "/img/background/main-bg.png";
 // 버블끼리 충돌만 사용 (PNG 투명 여백 보정). 벽 튕김은 이미지 박스 전체 기준.
 const BUBBLE_HIT_DIAMETER_RATIO = .9;
 

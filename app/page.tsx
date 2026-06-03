@@ -5,12 +5,51 @@ import { useRouter } from "next/navigation";
 import { addPhoto } from "@/lib/photo-store";
 import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
+import { PARTICLE_COLOR_PALETTE } from "@/lib/particle-colors";
 
 type CameraFilter = {
   id: string;
   name: string;
   cssFilter: string;
   overlay: string;
+};
+
+type ParticlePreset = {
+  id: string;
+  name: string;
+  imageSrc: string | null;
+  count: number;
+  sizeRange: [number, number];
+  durationRangeMs: [number, number];
+  swayRangePx: [number, number];
+  swayCyclesPerFallRange: [number, number];
+  spinDegPerSecRange: [number, number];
+  opacityRange: [number, number];
+};
+
+type ParticleSeed = {
+  xRatio: number;
+  offsetMs: number;
+  durationMs: number;
+  sizePx: number;
+  swayPx: number;
+  swayCyclesPerFall: number;
+  swayPhase: number;
+  spinStartDeg: number;
+  spinDegPerSec: number;
+  opacity: number;
+  color: string;
+  imageSrc: string;
+};
+
+type RenderedParticle = {
+  x: number;
+  y: number;
+  sizePx: number;
+  rotationDeg: number;
+  opacity: number;
+  color: string;
+  imageSrc: string;
 };
 
 const CAMERA_FILTERS: CameraFilter[] = [
@@ -156,9 +195,85 @@ const CAMERA_FILTERS: CameraFilter[] = [
   },
 ];
 
-const BUNNY_FRAME_URL =
-  "/img/%ED%94%84%EB%A0%88%EC%9E%84%201_%ED%86%A0%EB%81%BC.png";
+const BUNNY_FRAME_URL = "/img/frame/bunny.png";
 const BUNNY_BOTTOM_OFFSET_FACE_RATIO = 0.15;
+const BUNNY_FRAME_SCALE = 2.2;
+const TWO_PI = Math.PI * 2;
+
+const PARTICLE_PRESETS: ParticlePreset[] = [
+  {
+    id: "none",
+    name: "없음",
+    imageSrc: null,
+    count: 0,
+    sizeRange: [0, 0],
+    durationRangeMs: [0, 0],
+    swayRangePx: [0, 0],
+    swayCyclesPerFallRange: [0, 0],
+    spinDegPerSecRange: [0, 0],
+    opacityRange: [0, 0],
+  },
+  {
+    id: "star",
+    name: "별",
+    imageSrc: "/img/particle/star.png",
+    count: 14,
+    sizeRange: [46, 86],
+    durationRangeMs: [6500, 9800],
+    swayRangePx: [6, 22],
+    swayCyclesPerFallRange: [0.8, 1.8],
+    spinDegPerSecRange: [-42, 42],
+    opacityRange: [0.65, 0.96],
+  },
+  {
+    id: "apple",
+    name: "사과",
+    imageSrc: "/img/particle/apple.png",
+    count: 14,
+    sizeRange: [46, 86],
+    durationRangeMs: [6500, 9800],
+    swayRangePx: [6, 22],
+    swayCyclesPerFallRange: [0.8, 1.8],
+    spinDegPerSecRange: [-42, 42],
+    opacityRange: [0.65, 0.96],
+  },
+  {
+    id: "bunny",
+    name: "토끼",
+    imageSrc: "/img/particle/bunny.png.png",
+    count: 14,
+    sizeRange: [46, 86],
+    durationRangeMs: [6500, 9800],
+    swayRangePx: [6, 22],
+    swayCyclesPerFallRange: [0.8, 1.8],
+    spinDegPerSecRange: [-42, 42],
+    opacityRange: [0.65, 0.96],
+  },
+  {
+    id: "rose",
+    name: "장미",
+    imageSrc: "/img/particle/rose.png",
+    count: 14,
+    sizeRange: [46, 86],
+    durationRangeMs: [6500, 9800],
+    swayRangePx: [6, 22],
+    swayCyclesPerFallRange: [0.8, 1.8],
+    spinDegPerSecRange: [-42, 42],
+    opacityRange: [0.65, 0.96],
+  },
+  {
+    id: "note",
+    name: "음표",
+    imageSrc: "/img/particle/note.png",
+    count: 14,
+    sizeRange: [46, 86],
+    durationRangeMs: [6500, 9800],
+    swayRangePx: [6, 22],
+    swayCyclesPerFallRange: [0.8, 1.8],
+    spinDegPerSecRange: [-42, 42],
+    opacityRange: [0.65, 0.96],
+  },
+];
 
 type OverlayRect = {
   x: number;
@@ -168,7 +283,7 @@ type OverlayRect = {
 };
 
 function getFrameBox(face: FaceBox) {
-  const size = Math.max(face.width, face.height) * 2.8;
+  const size = Math.max(face.width, face.height) * BUNNY_FRAME_SCALE;
   const x = face.x + face.width / 2 - size / 2;
   const y =
     face.y + face.height - size + face.height * BUNNY_BOTTOM_OFFSET_FACE_RATIO;
@@ -209,6 +324,139 @@ function mapVideoRectToViewport(
   };
 }
 
+function randomBetween(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function shuffledRatios(count: number) {
+  const ratios = Array.from({ length: count }, (_, index) =>
+    (index + 0.5) / count,
+  );
+
+  for (let index = ratios.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const temp = ratios[index];
+    ratios[index] = ratios[swapIndex];
+    ratios[swapIndex] = temp;
+  }
+
+  return ratios;
+}
+
+function createParticleSeeds(preset: ParticlePreset): ParticleSeed[] {
+  if (preset.id === "none" || !preset.imageSrc) {
+    return [];
+  }
+
+  const xRatios = shuffledRatios(preset.count);
+  const timeRatios = shuffledRatios(preset.count);
+
+  return Array.from({ length: preset.count }, (_, index) => {
+    const color =
+      PARTICLE_COLOR_PALETTE[
+        Math.floor(Math.random() * PARTICLE_COLOR_PALETTE.length)
+      ];
+    const xRatio = clamp(xRatios[index] + randomBetween(-0.05, 0.05), 0.04, 0.96);
+    const phaseDuration = randomBetween(
+      preset.durationRangeMs[0],
+      preset.durationRangeMs[1],
+    );
+    const offsetMs =
+      timeRatios[index] * phaseDuration + randomBetween(-180, 180);
+
+    return {
+      xRatio,
+      offsetMs,
+      durationMs: phaseDuration,
+      sizePx: randomBetween(preset.sizeRange[0], preset.sizeRange[1]),
+      swayPx: randomBetween(preset.swayRangePx[0], preset.swayRangePx[1]),
+      swayCyclesPerFall: randomBetween(
+        preset.swayCyclesPerFallRange[0],
+        preset.swayCyclesPerFallRange[1],
+      ),
+      swayPhase: randomBetween(0, TWO_PI),
+      spinStartDeg: randomBetween(0, 360),
+      spinDegPerSec: randomBetween(
+        preset.spinDegPerSecRange[0],
+        preset.spinDegPerSecRange[1],
+      ),
+      opacity: randomBetween(preset.opacityRange[0], preset.opacityRange[1]),
+      color,
+      imageSrc: preset.imageSrc,
+    };
+  });
+}
+
+function mapParticlesToViewport(
+  seeds: ParticleSeed[],
+  elapsedMs: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): RenderedParticle[] {
+  if (viewportWidth <= 0 || viewportHeight <= 0 || seeds.length === 0) {
+    return [];
+  }
+
+  return seeds.map((seed) => {
+    const progress = ((elapsedMs + seed.offsetMs) % seed.durationMs) / seed.durationMs;
+    const sway =
+      Math.sin(progress * seed.swayCyclesPerFall * TWO_PI + seed.swayPhase) *
+      seed.swayPx;
+    // Snow-like fall: slow near top, faster near bottom.
+    const easedProgress = Math.pow(progress, 1.85);
+    const fadeStart = 0.8;
+    const fadeProgress = clamp((progress - fadeStart) / (1 - fadeStart), 0, 1);
+    const opacity = seed.opacity * Math.pow(1 - fadeProgress, 1.85);
+    const x = seed.xRatio * viewportWidth + sway;
+    const y = -seed.sizePx + easedProgress * (viewportHeight + seed.sizePx * 2);
+    const rotationDeg = seed.spinStartDeg + (elapsedMs / 1000) * seed.spinDegPerSec;
+
+    return {
+      x,
+      y,
+      sizePx: seed.sizePx,
+      rotationDeg,
+      opacity,
+      color: seed.color,
+      imageSrc: seed.imageSrc,
+    };
+  });
+}
+
+function drawTintedParticle(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  particle: RenderedParticle,
+) {
+  const size = Math.max(1, particle.sizePx);
+  const sourceWidth = Math.max(1, image.naturalWidth || image.width || 1);
+  const sourceHeight = Math.max(1, image.naturalHeight || image.height || 1);
+  const tintCanvas = document.createElement("canvas");
+  tintCanvas.width = sourceWidth;
+  tintCanvas.height = sourceHeight;
+  const tintCtx = tintCanvas.getContext("2d");
+  if (!tintCtx) {
+    return;
+  }
+
+  tintCtx.drawImage(image, 0, 0, sourceWidth, sourceHeight);
+  tintCtx.globalCompositeOperation = "source-in";
+  tintCtx.fillStyle = particle.color;
+  tintCtx.fillRect(0, 0, sourceWidth, sourceHeight);
+  tintCtx.globalCompositeOperation = "source-over";
+
+  ctx.save();
+  ctx.globalAlpha = particle.opacity;
+  ctx.translate(particle.x, particle.y);
+  ctx.rotate((particle.rotationDeg * Math.PI) / 180);
+  ctx.drawImage(tintCanvas, -size / 2, -size / 2, size, size);
+  ctx.restore();
+}
+
 export default function Home() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -227,24 +475,122 @@ export default function Home() {
   const [showShutterFlash, setShowShutterFlash] = useState(false);
   const [overlayRects, setOverlayRects] = useState<OverlayRect[]>([]);
   const [mappedOverlays, setMappedOverlays] = useState<OverlayRect[]>([]);
+  const [selectedParticleId, setSelectedParticleId] = useState<
+    ParticlePreset["id"]
+  >("none");
+  const [particleElapsedMs, setParticleElapsedMs] = useState(0);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const frameImageRef = useRef<HTMLImageElement | null>(null);
+  const particleAnimationStartRef = useRef(0);
+  const overlayImageRefs = useRef<Array<HTMLImageElement | null>>([]);
+  const particleNodeRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const particleImageMapRef = useRef<Record<string, HTMLImageElement>>({});
 
   const selectedFilter =
     CAMERA_FILTERS.find((filter) => filter.id === selectedFilterId) ??
     CAMERA_FILTERS[0];
+  const selectedParticlePreset =
+    PARTICLE_PRESETS.find((particle) => particle.id === selectedParticleId) ??
+    PARTICLE_PRESETS[0];
   const pagedFilters = useMemo(() => chunkByTen(CAMERA_FILTERS), []);
   const isBunnyFilter = selectedFilter.id === "bunny";
   const showPermissionModal = permissionState !== "granted";
   const isDenied = permissionState === "denied";
   const isCapturingTransition = capturedFrame !== null;
+  const particleSeeds = useMemo(
+    () => createParticleSeeds(selectedParticlePreset),
+    [selectedParticlePreset],
+  );
+  const renderedParticles = useMemo(
+    () =>
+      mapParticlesToViewport(
+        particleSeeds,
+        particleElapsedMs,
+        viewportSize.width,
+        viewportSize.height,
+      ),
+    [particleElapsedMs, particleSeeds, viewportSize.height, viewportSize.width],
+  );
+
+  useEffect(() => {
+    overlayImageRefs.current = overlayImageRefs.current.slice(
+      0,
+      mappedOverlays.length,
+    );
+  }, [mappedOverlays.length]);
+
+  useEffect(() => {
+    particleNodeRefs.current = particleNodeRefs.current.slice(
+      0,
+      renderedParticles.length,
+    );
+  }, [renderedParticles.length]);
 
   useEffect(() => {
     const image = new Image();
     image.src = BUNNY_FRAME_URL;
     frameImageRef.current = image;
+
+    PARTICLE_PRESETS.forEach((preset) => {
+      if (!preset.imageSrc) {
+        return;
+      }
+
+      const particleImage = new Image();
+      particleImage.src = preset.imageSrc;
+      particleImageMapRef.current[preset.imageSrc] = particleImage;
+    });
   }, []);
+
+  useEffect(() => {
+    const updateViewportSize = () => {
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        return;
+      }
+
+      setViewportSize({
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      });
+    };
+
+    updateViewportSize();
+    window.addEventListener("resize", updateViewportSize);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportSize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedParticlePreset.id === "none") {
+      setParticleElapsedMs(0);
+      particleAnimationStartRef.current = 0;
+      return;
+    }
+
+    let animationFrameId = 0;
+    let lastFrameTime = 0;
+    particleAnimationStartRef.current = performance.now();
+
+    const animate = (now: number) => {
+      if (now - lastFrameTime >= 30) {
+        setParticleElapsedMs(now - particleAnimationStartRef.current);
+        lastFrameTime = now;
+      }
+
+      animationFrameId = window.requestAnimationFrame(animate);
+    };
+
+    animationFrameId = window.requestAnimationFrame(animate);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [selectedParticlePreset.id]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -455,15 +801,61 @@ export default function Home() {
     }
 
     const viewport = viewportRef.current;
-    const viewportRect = viewport?.getBoundingClientRect();
-    const outWidth = viewportRect?.width ?? viewport?.clientWidth ?? width;
-    const outHeight = viewportRect?.height ?? viewport?.clientHeight ?? height;
+    const outWidth = viewport?.clientWidth ?? width;
+    const outHeight = viewport?.clientHeight ?? height;
     if (!outWidth || !outHeight) {
       setMessage("사진 캡처에 실패했습니다.");
       return;
     }
 
-    const overlaySnapshot = mappedOverlays.map((rect) => ({ ...rect }));
+    const viewportRect = viewport.getBoundingClientRect();
+    if (!viewportRect || !viewport) {
+      setMessage("사진 캡처에 실패했습니다.");
+      return;
+    }
+
+    const overlaySnapshot = overlayImageRefs.current
+      .map((overlayImage) => {
+        if (!overlayImage) {
+          return null;
+        }
+
+        const rect = overlayImage.getBoundingClientRect();
+        return {
+          x: rect.left - viewportRect.left,
+          y: rect.top - viewportRect.top,
+          width: rect.width,
+          height: rect.height,
+        } satisfies OverlayRect;
+      })
+      .filter((item): item is OverlayRect => item !== null);
+
+    const particleSnapshot = particleNodeRefs.current
+      .map((particleNode) => {
+        if (!particleNode) {
+          return null;
+        }
+
+        const rect = particleNode.getBoundingClientRect();
+        const rotationDeg = Number(particleNode.dataset.rotationDeg ?? "0");
+        const opacity = Number(particleNode.dataset.opacityValue ?? "1");
+        const color = particleNode.dataset.colorValue;
+        const imageSrc = particleNode.dataset.imageSrc;
+        if (!color || !imageSrc) {
+          return null;
+        }
+
+        return {
+          x: rect.left - viewportRect.left + rect.width / 2,
+          y: rect.top - viewportRect.top + rect.height / 2,
+          sizePx: Math.max(rect.width, rect.height),
+          rotationDeg,
+          opacity,
+          color,
+          imageSrc,
+        } satisfies RenderedParticle;
+      })
+      .filter((item): item is RenderedParticle => item !== null);
     const dpr = Math.max(1, Math.round((window.devicePixelRatio ?? 1) * 100) / 100);
     // 미리보기 대비 캡처가 오른쪽으로 밀리는 경우를 위한 보정값 (음수면 왼쪽으로 이동)
     const CAPTURE_X_NUDGE_PX = 0;
@@ -509,6 +901,8 @@ export default function Home() {
     finalCtx.scale(-1, 1);
     finalCtx.translate(CAPTURE_X_NUDGE_PX, 0);
     finalCtx.drawImage(video, offsetX, offsetY, renderWidth, renderHeight);
+    finalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    finalCtx.filter = "none";
 
     if (
       isBunnyFilter &&
@@ -517,15 +911,23 @@ export default function Home() {
     ) {
       const frameImage = frameImageRef.current;
       overlaySnapshot.forEach((frameRect) => {
-        // mappedOverlays는 뷰포트 좌표(미러링 포함)라서, 캔버스 미러링 상태에선 다시 뒤집어야 동일 위치가 된다.
-        const drawX = outWidth - (frameRect.x + frameRect.width);
         finalCtx.drawImage(
           frameImage,
-          drawX,
+          frameRect.x,
           frameRect.y,
           frameRect.width,
           frameRect.height,
         );
+      });
+    }
+
+    if (particleSnapshot.length > 0) {
+      particleSnapshot.forEach((particle) => {
+        const particleImage = particleImageMapRef.current[particle.imageSrc];
+        if (!particleImage?.complete) {
+          return;
+        }
+        drawTintedParticle(finalCtx, particleImage, particle);
       });
     }
 
@@ -554,7 +956,6 @@ export default function Home() {
     cameraActive,
     isCapturingTransition,
     isBunnyFilter,
-    mappedOverlays,
     playShutterSound,
     router,
     selectedFilter.cssFilter,
@@ -617,11 +1018,50 @@ export default function Home() {
         <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/85" />
       )}
 
+      {cameraActive && selectedParticlePreset.id !== "none" && (
+        <div className="pointer-events-none absolute inset-0 z-[25] overflow-hidden">
+          {renderedParticles.map((particle, index) => (
+            <div
+              key={`particle-${index}`}
+              ref={(node) => {
+                particleNodeRefs.current[index] = node;
+              }}
+              className="particle-item absolute select-none"
+              data-rotation-deg={particle.rotationDeg}
+              data-opacity-value={particle.opacity}
+              data-color-value={particle.color}
+              data-image-src={particle.imageSrc}
+              style={{
+                left: `${particle.x}px`,
+                top: `${particle.y}px`,
+                transform: `translate(-50%, -50%) rotate(${particle.rotationDeg}deg)`,
+                width: `${particle.sizePx}px`,
+                height: `${particle.sizePx}px`,
+                backgroundColor: particle.color,
+                WebkitMaskImage: `url(${particle.imageSrc})`,
+                maskImage: `url(${particle.imageSrc})`,
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskPosition: "center",
+                WebkitMaskSize: "contain",
+                maskSize: "contain",
+                opacity: particle.opacity,
+              }}
+              aria-hidden
+            />
+          ))}
+        </div>
+      )}
+
       {isBunnyFilter &&
         cameraActive &&
         mappedOverlays.map((mappedOverlay, index) => (
           <img
             key={`bunny-overlay-${index}`}
+            ref={(node) => {
+              overlayImageRefs.current[index] = node;
+            }}
             src={BUNNY_FRAME_URL}
             alt="토끼 프레임"
             className="pointer-events-none absolute z-20 select-none"
@@ -701,6 +1141,48 @@ export default function Home() {
                   })}
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-white/25 bg-black/45 p-2">
+            <div className="mb-2 text-[11px] text-white/80 md:text-xs">파티클</div>
+            <div className="flex flex-wrap gap-2">
+              {PARTICLE_PRESETS.map((particlePreset) => {
+                const selected = particlePreset.id === selectedParticlePreset.id;
+                return (
+                  <button
+                    key={particlePreset.id}
+                    type="button"
+                    onClick={() => setSelectedParticleId(particlePreset.id)}
+                    className={`rounded-lg border px-3 py-2 text-[11px] leading-tight transition md:text-xs ${
+                      selected
+                        ? "border-white bg-white text-black"
+                        : "border-white/35 bg-black/35 text-white hover:bg-white/15"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {particlePreset.imageSrc ? (
+                        <span
+                          className="inline-block h-4 w-4"
+                          style={{
+                            backgroundColor: PARTICLE_COLOR_PALETTE[0],
+                            WebkitMaskImage: `url(${particlePreset.imageSrc})`,
+                            maskImage: `url(${particlePreset.imageSrc})`,
+                            WebkitMaskRepeat: "no-repeat",
+                            maskRepeat: "no-repeat",
+                            WebkitMaskPosition: "center",
+                            maskPosition: "center",
+                            WebkitMaskSize: "contain",
+                            maskSize: "contain",
+                          }}
+                          aria-hidden
+                        />
+                      ) : null}
+                      {particlePreset.name}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
