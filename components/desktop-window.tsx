@@ -7,6 +7,11 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  getTrafficLightColors,
+  type TrafficLightColors,
+} from "@/lib/window-traffic-lights";
+
 export type DesktopWindowId = "camera" | "particle" | "frame";
 
 export type WindowLayout = {
@@ -26,9 +31,11 @@ const WINDOW_MIN_WIDTH: Record<DesktopWindowId, number> = {
 
 const WINDOW_MIN_HEIGHT: Record<DesktopWindowId, number> = {
   camera: 300,
-  particle: 130,
+  particle: 140,
   frame: 160,
 };
+
+export const DESKTOP_WINDOW_TITLE_BAR_HEIGHT = 36;
 
 const MAX_SIZE_VIEWPORT_RATIO = 0.98;
 
@@ -39,64 +46,83 @@ export const DEFAULT_WINDOW_Z_ORDER: DesktopWindowId[] = [
   "particle",
 ];
 
-const CAMERA_TITLE_BAR_HEIGHT = 36;
-const CAMERA_FOOTER_HEIGHT = 88;
-/** 미리보기 영역 높이 — 가로(cameraWidth)와 무관하게 여기서만 조절 */
-const CAMERA_VIEWPORT_HEIGHT = 600;
+/** MacBook 14" 풀스크린(기본 스케일 1512×982) 기준 — 다른 해상도는 비율로 맞춤 */
+export const REFERENCE_VIEWPORT = { width: 1512, height: 982 };
 
-function estimateCameraHeight() {
-  return CAMERA_TITLE_BAR_HEIGHT + CAMERA_VIEWPORT_HEIGHT + CAMERA_FOOTER_HEIGHT;
-}
+/** 기준 해상도에서의 창 위치·크기 — 여기서 수정하세요 */
+export const REFERENCE_WINDOW_LAYOUTS: Record<DesktopWindowId, WindowLayout> = {
+  camera: {
+    x: 115.11,
+    y: 168.93,
+    width: 883.21,
+    height: 655.68,
+  },
+  particle: {
+    x: 941.75,
+    y: 86.67,
+    width: 428,
+    height: 160,
+  },
+  frame: {
+    x: 1020,
+    y: 600,
+    width: 450,
+    height: 332.63,
+  },
+};
 
-function estimateFrameHeight(width: number) {
-  return 36 + width * 0.55 + 24;
-}
+/** @deprecated REFERENCE_WINDOW_LAYOUTS 사용 */
+export const DEFAULT_WINDOW_LAYOUTS = REFERENCE_WINDOW_LAYOUTS;
 
-function estimateParticleHeight() {
-  return 36 + 120;
+function scaleReferenceLayout(
+  layout: WindowLayout,
+  viewportWidth: number,
+  viewportHeight: number,
+): WindowLayout {
+  const scaleX = viewportWidth / REFERENCE_VIEWPORT.width;
+  const scaleY = viewportHeight / REFERENCE_VIEWPORT.height;
+
+  return {
+    x: layout.x * scaleX,
+    y: layout.y * scaleY,
+    width: layout.width * scaleX,
+    height: layout.height * scaleY,
+  };
 }
 
 export function createDefaultWindowLayouts(
-  viewportWidth: number,
-  viewportHeight: number,
+  viewportWidth: number = typeof window !== "undefined"
+    ? window.innerWidth
+    : REFERENCE_VIEWPORT.width,
+  viewportHeight: number = typeof window !== "undefined"
+    ? window.innerHeight
+    : REFERENCE_VIEWPORT.height,
 ): Record<DesktopWindowId, WindowLayout> {
-  const cameraWidth = Math.min(1100, viewportWidth * MAX_SIZE_VIEWPORT_RATIO);
-  const sideWidth = Math.min(450, viewportWidth * MAX_SIZE_VIEWPORT_RATIO);
-  const marginX = viewportWidth * 0.03;
-  const marginY = viewportHeight * 0.06;
-
-  const cameraHeight = estimateCameraHeight();
-  const frameHeight = estimateFrameHeight(sideWidth);
-  const particleHeight = estimateParticleHeight();
-
   return {
     camera: clampLayout(
-      {
-        x: (viewportWidth - cameraWidth) / 2-180,
-        y: viewportWidth < 768 ? 72 : (viewportHeight - cameraHeight) / 2+20,
-        width: cameraWidth,
-        height: cameraHeight,
-      },
+      scaleReferenceLayout(
+        REFERENCE_WINDOW_LAYOUTS.camera,
+        viewportWidth,
+        viewportHeight,
+      ),
       WINDOW_MIN_WIDTH.camera,
       WINDOW_MIN_HEIGHT.camera,
     ),
     particle: clampLayout(
-      {
-        x: viewportWidth - sideWidth - marginX,
-        y: marginY,
-        width: sideWidth,
-        height: particleHeight,
-      },
+      scaleReferenceLayout(
+        REFERENCE_WINDOW_LAYOUTS.particle,
+        viewportWidth,
+        viewportHeight,
+      ),
       WINDOW_MIN_WIDTH.particle,
       WINDOW_MIN_HEIGHT.particle,
     ),
     frame: clampLayout(
-      {
-        x: viewportWidth - sideWidth - marginX,
-        y: Math.max(marginY, viewportHeight - frameHeight - marginY),
-        width: sideWidth,
-        height: frameHeight,
-      },
+      scaleReferenceLayout(
+        REFERENCE_WINDOW_LAYOUTS.frame,
+        viewportWidth,
+        viewportHeight,
+      ),
       WINDOW_MIN_WIDTH.frame,
       WINDOW_MIN_HEIGHT.frame,
     ),
@@ -172,12 +198,21 @@ function applyResize(
   return clampLayout({ x, y, width, height }, minWidth, minHeight);
 }
 
-function MacTrafficLights() {
+function MacTrafficLights({ colors }: { colors: TrafficLightColors }) {
   return (
     <div className="flex gap-1.5" aria-hidden>
-      <span className="size-3 rounded-full bg-[#ff5f57]" />
-      <span className="size-3 rounded-full bg-[#febc2e]" />
-      <span className="size-3 rounded-full bg-[#28c840]" />
+      <span
+        className="size-3 rounded-full"
+        style={{ backgroundColor: colors.close }}
+      />
+      <span
+        className="size-3 rounded-full"
+        style={{ backgroundColor: colors.minimize }}
+      />
+      <span
+        className="size-3 rounded-full"
+        style={{ backgroundColor: colors.maximize }}
+      />
     </div>
   );
 }
@@ -186,11 +221,13 @@ function MacWindow({
   children,
   className = "",
   titleBar,
+  trafficLightColors,
   onTitleBarPointerDown,
 }: {
   children: ReactNode;
   className?: string;
   titleBar?: ReactNode;
+  trafficLightColors: TrafficLightColors;
   onTitleBarPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
   return (
@@ -203,7 +240,7 @@ function MacWindow({
         }`}
         onPointerDown={onTitleBarPointerDown}
       >
-        <MacTrafficLights />
+        <MacTrafficLights colors={trafficLightColors} />
         {titleBar ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             {titleBar}
@@ -281,6 +318,7 @@ export function DesktopWindow({
 
   const minWidth = WINDOW_MIN_WIDTH[windowId];
   const minHeight = WINDOW_MIN_HEIGHT[windowId];
+  const trafficLightColors = getTrafficLightColors(windowId);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -394,6 +432,7 @@ export function DesktopWindow({
       <div className="relative h-full">
         <MacWindow
           titleBar={titleBar}
+          trafficLightColors={trafficLightColors}
           onTitleBarPointerDown={handleTitleBarPointerDown}
         >
           {children}

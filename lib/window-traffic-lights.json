@@ -1,0 +1,17 @@
+{
+  "camera": {
+    "close": "#B2B2B2",
+    "minimize": "#B2B2B2",
+    "maximize": "rgb(210 210 210)"
+  },
+  "particle": {
+    "close": "#B9FFE6",
+    "minimize": "#B2B2B2",
+    "maximize": "rgb(210 210 210)"
+  },
+  "frame": {
+    "close": "#FBCFE0",
+    "minimize": "#D7C7EE",
+    "maximize": "#B9FFE6"
+  }
+}

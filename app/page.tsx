@@ -10,15 +10,11 @@ import {
 import {
   createDefaultWindowLayouts,
   DEFAULT_WINDOW_Z_ORDER,
+  DESKTOP_WINDOW_TITLE_BAR_HEIGHT,
   DesktopWindow,
   type DesktopWindowId,
   type WindowLayout,
 } from "@/components/desktop-window";
-import { WindowLayoutPanel } from "@/components/window-layout-panel";
-import {
-  loadDesktopWindowLayout,
-  saveDesktopWindowLayoutDebounced,
-} from "@/lib/desktop-window-layout-store";
 import { useRouter } from "next/navigation";
 import { addPhoto } from "@/lib/photo-store";
 import { upsertRawPhoto } from "@/lib/photo-raw-store";
@@ -176,6 +172,23 @@ const DESKTOP_LOGO_IMG = "/img/logo/로고 이미지.png";
 const CAMERA_TITLE_IMG = "/img/icon/1_카메라 창 이름.png";
 const CAMERA_CAPTURE_BTN_IMG = "/img/icon/1_카메라 버튼.png";
 
+function WindowTitleBarText({
+  windowTitle,
+  name,
+  accentClassName,
+}: {
+  windowTitle: string;
+  name: string;
+  accentClassName: string;
+}) {
+  return (
+    <span className="text-sm font-bold tracking-tight text-neutral-800">
+      {windowTitle}{" "}
+      <span className={accentClassName}>({name})</span>
+    </span>
+  );
+}
+
 /**
  * 첫 화면 레이아웃 — 위치(top/left/right/bottom)와 zIndex는 여기서 수정하세요.
  */
@@ -186,8 +199,8 @@ const HOME_LAYOUT = {
     windowBase: 20,
   },
   desktopLogo: {
-    top: "2rem",
-    left: "2.5rem",
+    top: "3rem",
+    left: "2rem",
     width: "clamp(120px, 14vw, 220px)",
   },
 } as const;
@@ -197,11 +210,11 @@ const PARTICLE_UI_PRESETS = PARTICLE_PRESETS.filter(
 );
 
 const PARTICLE_ICON_BY_ID: Record<string, string> = {
-  star: "/img/particle_icon/2_파티클_별.png",
-  apple: "/img/particle_icon/2_파티클_사과.png",
-  bunny: "/img/particle_icon/2_파티클_토끼.png",
-  note: "/img/particle_icon/2_파티클_음표.png",
-  rose: "/img/particle_icon/2_파티클_장미.png",
+  star: "/img/particle_icon/파티클 별.png",
+  apple: "/img/particle_icon/파티클 사과.png",
+  bunny: "/img/particle_icon/파티클 토끼.png",
+  note: "/img/particle_icon/파티클 음표.png",
+  rose: "/img/particle_icon/파티클 장미.png",
 };
 
 const PARTICLE_LABEL_BY_ID: Record<string, string> = {
@@ -215,11 +228,12 @@ const PARTICLE_LABEL_BY_ID: Record<string, string> = {
 const FRAME_GRID_SLOTS: Array<{
   filterId: FrameVariantId | null;
   thumbSrc: string | null;
+  label?: string;
 }> = [
+  { filterId: "plain", thumbSrc: null, label: "default" },
   { filterId: "lop_bunny", thumbSrc: "/img/frame/lop_bunny.png" },
   { filterId: "bunny", thumbSrc: "/img/frame/bunny.png" },
   { filterId: "cloud", thumbSrc: "/img/frame/3_구름.png" },
-  { filterId: null, thumbSrc: null },
   { filterId: null, thumbSrc: null },
   { filterId: null, thumbSrc: null },
   { filterId: null, thumbSrc: null },
@@ -281,7 +295,17 @@ function randomBetween(min: number, max: number) {
 }
 
 function clamp(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
   return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeParticleOpacity(value: number) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return clamp(value, 0, 1);
 }
 
 function shuffledRatios(count: number) {
@@ -345,35 +369,63 @@ function createParticleSeeds(preset: ParticlePreset): ParticleSeed[] {
   });
 }
 
+const PARTICLE_VIEWPORT_REFERENCE = { width: 883, height: 559 };
+const PARTICLE_FADE_START_VIEWPORT_RATIO = 0.85;
+
 function mapParticlesToViewport(
   seeds: ParticleSeed[],
   elapsedMs: number,
   viewportWidth: number,
   viewportHeight: number,
 ): RenderedParticle[] {
-  if (viewportWidth <= 0 || viewportHeight <= 0 || seeds.length === 0) {
+  if (
+    !Number.isFinite(viewportWidth) ||
+    !Number.isFinite(viewportHeight) ||
+    viewportWidth <= 0 ||
+    viewportHeight <= 0 ||
+    seeds.length === 0
+  ) {
+    return [];
+  }
+
+  const viewportScale = Math.min(
+    viewportWidth / PARTICLE_VIEWPORT_REFERENCE.width,
+    viewportHeight / PARTICLE_VIEWPORT_REFERENCE.height,
+  );
+
+  if (!Number.isFinite(viewportScale) || viewportScale <= 0) {
     return [];
   }
 
   return seeds.map((seed) => {
-    const progress = ((elapsedMs + seed.offsetMs) % seed.durationMs) / seed.durationMs;
+    const progress =
+      seed.durationMs > 0
+        ? ((elapsedMs + seed.offsetMs) % seed.durationMs) / seed.durationMs
+        : 0;
+    const scaledSize = seed.sizePx * viewportScale;
+    const scaledSway = seed.swayPx * viewportScale;
     const sway =
       Math.sin(progress * seed.swayCyclesPerFall * TWO_PI + seed.swayPhase) *
-      seed.swayPx;
+      scaledSway;
     // Snow-like fall: slow near top, faster near bottom.
     const easedProgress = Math.pow(progress, 1.85);
-    const fadeStart = 0.8;
-    const fadeProgress = clamp((progress - fadeStart) / (1 - fadeStart), 0, 1);
-    const opacity = seed.opacity * Math.pow(1 - fadeProgress, 1.85);
     const x = seed.xRatio * viewportWidth + sway;
-    const y = -seed.sizePx + easedProgress * (viewportHeight + seed.sizePx * 2);
+    const y =
+      -scaledSize + easedProgress * (viewportHeight + scaledSize * 2);
+    const fadeStartY = viewportHeight * PARTICLE_FADE_START_VIEWPORT_RATIO;
+    const fadeEndY = viewportHeight + scaledSize;
+    const fadeDenominator = Math.max(1, fadeEndY - fadeStartY);
+    const fadeProgress = clamp((y - fadeStartY) / fadeDenominator, 0, 1);
+    const opacity = sanitizeParticleOpacity(
+      seed.opacity * (1 - Math.pow(fadeProgress, 0.75)),
+    );
     const rotationDeg = seed.spinStartDeg + (elapsedMs / 1000) * seed.spinDegPerSec;
 
     return {
-      x,
-      y,
-      sizePx: seed.sizePx,
-      rotationDeg,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      sizePx: Number.isFinite(scaledSize) ? Math.max(1, scaledSize) : 1,
+      rotationDeg: Number.isFinite(rotationDeg) ? rotationDeg : 0,
       opacity,
       color: seed.color,
       imageSrc: seed.imageSrc,
@@ -421,8 +473,8 @@ export default function Home() {
     "checking" | "prompt" | "requesting" | "granted" | "denied"
   >("checking");
   const [message, setMessage] = useState("카메라 권한을 확인하는 중입니다.");
-  const [selectedFilterId, setSelectedFilterId] = useState<FrameVariantId>(
-    "bunny",
+  const [selectedFilterId, setSelectedFilterId] = useState<FrameVariantId | null>(
+    "plain",
   );
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [capturePhase, setCapturePhase] = useState<"idle" | "freeze" | "slide">(
@@ -444,14 +496,13 @@ export default function Home() {
   const [windowZOrder, setWindowZOrder] = useState<DesktopWindowId[]>(
     DEFAULT_WINDOW_Z_ORDER,
   );
-  const [layoutUpdatedAt, setLayoutUpdatedAt] = useState<string | null>(null);
-
   const windowLayouts = isLayoutMounted
     ? (customWindowLayouts ??
       createDefaultWindowLayouts(window.innerWidth, window.innerHeight))
     : null;
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const particlePanelRef = useRef<HTMLDivElement | null>(null);
   const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(
     null,
   );
@@ -462,8 +513,9 @@ export default function Home() {
   const particleImageMapRef = useRef<Record<string, HTMLImageElement>>({});
 
   const selectedFilter =
-    CAMERA_FILTERS.find((filter) => filter.id === selectedFilterId) ??
-    CAMERA_FILTERS[0];
+    CAMERA_FILTERS.find(
+      (filter) => filter.id === (selectedFilterId ?? "plain"),
+    ) ?? CAMERA_FILTERS[0];
   const selectedParticlePreset =
     PARTICLE_PRESETS.find((particle) => particle.id === selectedParticleId) ??
     PARTICLE_PRESETS[0];
@@ -523,50 +575,50 @@ export default function Home() {
 
   useEffect(() => {
     setIsLayoutMounted(true);
-
-    const savedLayout = loadDesktopWindowLayout();
-    if (savedLayout) {
-      setCustomWindowLayouts(savedLayout.layouts);
-      setWindowZOrder(savedLayout.zOrder);
-      setLayoutUpdatedAt(savedLayout.updatedAt);
-    }
   }, []);
 
   useEffect(() => {
-    if (!isLayoutMounted || !customWindowLayouts) {
+    const viewport = viewportRef.current;
+    if (!viewport) {
       return;
     }
 
-    saveDesktopWindowLayoutDebounced({
-      layouts: customWindowLayouts,
-      zOrder: windowZOrder,
-    });
-    setLayoutUpdatedAt(new Date().toISOString());
-  }, [customWindowLayouts, isLayoutMounted, windowZOrder]);
-
-  useEffect(() => {
     const updateViewportSize = () => {
-      const viewport = viewportRef.current;
-      if (!viewport) {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      if (!Number.isFinite(width) || !Number.isFinite(height)) {
         return;
       }
 
-      setViewportSize({
-        width: viewport.clientWidth,
-        height: viewport.clientHeight,
-      });
+      setViewportSize({ width, height });
     };
 
     updateViewportSize();
+
+    const observer = new ResizeObserver(updateViewportSize);
+    observer.observe(viewport);
     window.addEventListener("resize", updateViewportSize);
 
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", updateViewportSize);
     };
-  }, []);
+  }, [
+    isLayoutMounted,
+    windowLayouts?.camera.width,
+    windowLayouts?.camera.height,
+  ]);
 
   const bringWindowToFront = useCallback((windowId: DesktopWindowId) => {
     setWindowZOrder((prev) => [...prev.filter((id) => id !== windowId), windowId]);
+  }, []);
+
+  const toggleParticleSelection = useCallback((particleId: ParticlePreset["id"]) => {
+    setSelectedParticleId((prev) => (prev === particleId ? "none" : particleId));
+  }, []);
+
+  const toggleFilterSelection = useCallback((filterId: FrameVariantId) => {
+    setSelectedFilterId((prev) => (prev === filterId ? null : filterId));
   }, []);
 
   const updateWindowLayout = useCallback(
@@ -586,6 +638,35 @@ export default function Home() {
       HOME_LAYOUT.zIndex.windowBase + windowZOrder.indexOf(windowId),
     [windowZOrder],
   );
+
+  useEffect(() => {
+    const panel = particlePanelRef.current;
+    if (!panel || !windowLayouts) {
+      return;
+    }
+
+    const syncParticleWindowHeight = () => {
+      const requiredWindowHeight =
+        panel.scrollHeight + DESKTOP_WINDOW_TITLE_BAR_HEIGHT;
+      if (requiredWindowHeight <= windowLayouts.particle.height + 1) {
+        return;
+      }
+
+      updateWindowLayout("particle", {
+        ...windowLayouts.particle,
+        height: requiredWindowHeight,
+      });
+    };
+
+    syncParticleWindowHeight();
+
+    const observer = new ResizeObserver(syncParticleWindowHeight);
+    observer.observe(panel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [updateWindowLayout, windowLayouts]);
 
   useEffect(() => {
     if (selectedParticlePreset.id === "none") {
@@ -1156,11 +1237,6 @@ export default function Home() {
               className="h-5 w-auto"
             />
           }
-          footer={
-            <p className="pointer-events-none mt-2 text-center text-xs text-white/90 drop-shadow-sm">
-              {message}
-            </p>
-          }
         >
             <div
               ref={viewportRef}
@@ -1294,7 +1370,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex shrink-0 items-center justify-center border-t border-black/8 bg-white py-4">
+            <div className="flex shrink-0 items-center justify-center border-t border-black/8 bg-white py-2">
               <button
                 type="button"
                 onClick={capturePhoto}
@@ -1309,7 +1385,7 @@ export default function Home() {
                 <img
                   src={CAMERA_CAPTURE_BTN_IMG}
                   alt=""
-                  className="h-14 w-14 object-contain md:h-16 md:w-16"
+                  className="h-11 w-11 object-contain md:h-12 md:w-12"
                 />
               </button>
             </div>
@@ -1323,8 +1399,18 @@ export default function Home() {
           zIndex={getWindowZIndex("particle")}
           onFocus={() => bringWindowToFront("particle")}
           onLayoutChange={(layout) => updateWindowLayout("particle", layout)}
+          titleBar={
+            <WindowTitleBarText
+              windowTitle="Window Title"
+              name="Particle"
+              accentClassName="text-violet-700"
+            />
+          }
         >
-            <div className="flex h-full min-h-0 items-start justify-between gap-1 overflow-auto bg-white px-3 py-4">
+            <div
+              ref={particlePanelRef}
+              className="flex h-full min-h-0 items-center justify-between gap-1 overflow-hidden bg-white px-2 py-2"
+            >
               {PARTICLE_UI_PRESETS.map((particlePreset) => {
                 const selected =
                   particlePreset.id === selectedParticlePreset.id;
@@ -1333,8 +1419,9 @@ export default function Home() {
                   <button
                     key={particlePreset.id}
                     type="button"
-                    onClick={() => setSelectedParticleId(particlePreset.id)}
-                    className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-1 py-1 transition ${
+                    onClick={() => toggleParticleSelection(particlePreset.id)}
+                    aria-label={particlePreset.name}
+                    className={`flex min-w-0 flex-1 flex-col items-center gap-2 rounded-lg px-1 py-1 transition ${
                       selected
                         ? "bg-violet-50 ring-2 ring-violet-400"
                         : "hover:bg-neutral-50"
@@ -1344,10 +1431,10 @@ export default function Home() {
                       <img
                         src={iconSrc}
                         alt=""
-                        className="h-11 w-11 object-contain md:h-12 md:w-12"
+                        className="h-10 w-10 object-contain md:h-11 md:w-11"
                       />
                     ) : null}
-                    <span className="font-serif text-[11px] italic text-neutral-700 md:text-xs">
+                    <span className="font-luxurious-script text-xs leading-none text-neutral-800 md:text-sm">
                       {PARTICLE_LABEL_BY_ID[particlePreset.id] ??
                         particlePreset.name}
                     </span>
@@ -1365,6 +1452,13 @@ export default function Home() {
           zIndex={getWindowZIndex("frame")}
           onFocus={() => bringWindowToFront("frame")}
           onLayoutChange={(layout) => updateWindowLayout("frame", layout)}
+          titleBar={
+            <WindowTitleBarText
+              windowTitle="Window Title"
+              name="Frame"
+              accentClassName="text-sky-700"
+            />
+          }
         >
             <div className="grid h-full min-h-0 grid-cols-4 grid-rows-2 gap-2 overflow-auto bg-white p-3">
               {FRAME_GRID_SLOTS.map((slot, index) => {
@@ -1374,6 +1468,23 @@ export default function Home() {
                 const isSelectable = slot.filterId !== null;
 
                 if (!slot.thumbSrc) {
+                  if (slot.filterId && slot.label) {
+                    return (
+                      <button
+                        key={`frame-slot-${index}`}
+                        type="button"
+                        onClick={() => toggleFilterSelection(slot.filterId!)}
+                        className={`flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#b5b5b5] transition hover:brightness-105 ${
+                          selected ? "ring-2 ring-violet-400" : ""
+                        }`}
+                      >
+                        <span className="font-display-elegant text-sm font-semibold italic tracking-wide text-neutral-800">
+                          {slot.label}
+                        </span>
+                      </button>
+                    );
+                  }
+
                   return (
                     <div
                       key={`frame-slot-${index}`}
@@ -1390,7 +1501,7 @@ export default function Home() {
                     disabled={!isSelectable}
                     onClick={() => {
                       if (slot.filterId) {
-                        setSelectedFilterId(slot.filterId);
+                        toggleFilterSelection(slot.filterId);
                       }
                     }}
                     className={`flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#b5b5b5] p-1 transition ${
@@ -1407,13 +1518,6 @@ export default function Home() {
               })}
             </div>
         </DesktopWindow>
-      ) : null}
-
-      {windowLayouts ? (
-        <WindowLayoutPanel
-          layouts={windowLayouts}
-          updatedAt={layoutUpdatedAt}
-        />
       ) : null}
 
     </main>

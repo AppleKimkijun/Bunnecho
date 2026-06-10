@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Luxurious+Script&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -140,6 +141,14 @@
     0 0 2px rgb(255 255 255 / 75%);
   -webkit-text-stroke: 0.35px rgb(255 255 255 / 55%);
   will-change: transform, top;
+}
+
+.font-luxurious-script {
+  font-family: "Luxurious Script", cursive;
+}
+
+.font-display-elegant {
+  font-family: "Playfair Display", serif;
 }
 
 @media (prefers-reduced-motion: reduce) {
