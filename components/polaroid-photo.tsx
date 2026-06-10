@@ -9,6 +9,7 @@ const MARGIN_EDGE = 0.06;
 const MARGIN_BOTTOM = 0.26;
 
 const DEFAULT_PHOTO_ASPECT = 4 / 3;
+const POLAROID_DISPLAY_SCALE = 0.8;
 
 type PolaroidPhotoProps = {
   src?: string | null;
@@ -37,10 +38,11 @@ function getPolaroidMetrics(
   const frameHeightForUnitPhoto =
     photoH + photoW * MARGIN_EDGE + photoW * MARGIN_BOTTOM;
 
-  const scale = Math.min(
-    maxWidth / frameWidthForUnitPhoto,
-    maxHeight / frameHeightForUnitPhoto,
-  );
+  const scale =
+    Math.min(
+      maxWidth / frameWidthForUnitPhoto,
+      maxHeight / frameHeightForUnitPhoto,
+    ) * POLAROID_DISPLAY_SCALE;
 
   const photoWidth = photoW * scale;
   const photoHeight = photoH * scale;

@@ -26,7 +26,6 @@ const BUTTON_ASPECT = 2501 / 1181;
 /** scale 1 기준 레이아웃 (화면에 맞춰 비율로 축소·확대) */
 const LAYOUT_BASE = {
   boardWidth: 1140,
-  boardHeightScale: 1.22,
   buttonWidth: 300,
   rowGap: 0,
   columnGap: 0,
@@ -35,7 +34,7 @@ const LAYOUT_BASE = {
 /** 보드 안 촬영 사진 위치·크기 — 보드 PNG 기준 % + px 보정 (scale 1 기준) */
 const BOARD_PHOTO_AREA = {
   left: "calc(17% + 50px)",
-  top: "calc(18% - 20px)",
+  top: "calc(18% - 20px - 2rem)",
   width: "calc(66% - 100px)",
   height: "calc(66% + 100px)",
 } as const;
@@ -48,7 +47,7 @@ const BOARD_LOGO_AREA = {
 } as const;
 
 function getBoardHeight(boardWidth: number) {
-  return (boardWidth / BOARD_ASPECT) * LAYOUT_BASE.boardHeightScale;
+  return boardWidth / BOARD_ASPECT;
 }
 
 function getLayoutMetrics(isStacked: boolean) {
@@ -220,7 +219,7 @@ export default function ViewPhotoPage() {
             <img
               src={BOARD_URL}
               alt=""
-              className="block h-full w-full select-none object-fill"
+              className="block h-full w-full select-none object-contain object-center"
               draggable={false}
             />
 
