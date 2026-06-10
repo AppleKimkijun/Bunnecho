@@ -10,6 +10,9 @@ import {
 } from "@/lib/photo-store";
 import { getPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
 import { upsertSharedFaces } from "@/lib/shared-face-store";
+import { PolaroidPhoto } from "@/components/polaroid-photo";
+import { ScreenReadyGate } from "@/components/screen-ready-gate";
+import { VIEW_PHOTO_SCREEN_IMAGE_URLS } from "@/lib/screen-assets";
 
 const BG_URL = "/img/background/background2.png";
 const BOARD_URL = "/img/board/board.png";
@@ -17,12 +20,12 @@ const BOARD_LOGO_URL = "/img/board/board_logo.png";
 const CAMERA_BUTTON_URL = "/img/button/카메라 이동.png";
 const SHARE_BUTTON_URL = "/img/button/공유 버튼.png";
 
-const BOARD_ASPECT = 10515 / 6087;
+const BOARD_ASPECT = 2048 / 1185;
 const BUTTON_ASPECT = 2501 / 1181;
 
 /** scale 1 기준 레이아웃 (화면에 맞춰 비율로 축소·확대) */
 const LAYOUT_BASE = {
-  boardWidth: 920,
+  boardWidth: 980,
   buttonWidth: 300,
   rowGap: 0,
   columnGap: 0,
@@ -30,10 +33,10 @@ const LAYOUT_BASE = {
 
 /** 보드 안 촬영 사진 위치·크기 — 보드 PNG 기준 % (여기서 수정) */
 const BOARD_PHOTO_AREA = {
-  left: "20%",
-  top: "22.5%",
-  width: "60%",
-  height: "55%",
+  left: "19%",
+  top: "21.5%",
+  width: "62%",
+  height: "58%",
 } as const;
 
 /** 보드 왼쪽 상단 로고 */
@@ -187,6 +190,7 @@ export default function ViewPhotoPage() {
   const boardHeight = LAYOUT_BASE.boardWidth / BOARD_ASPECT;
 
   return (
+    <ScreenReadyGate assets={VIEW_PHOTO_SCREEN_IMAGE_URLS}>
     <main className="fixed inset-0 h-[100dvh] w-full overflow-hidden">
       <div
         className="absolute inset-0 bg-cover bg-center"
@@ -228,7 +232,7 @@ export default function ViewPhotoPage() {
             />
 
             <div
-              className="absolute overflow-hidden"
+              className="absolute flex items-center justify-center"
               style={{
                 left: BOARD_PHOTO_AREA.left,
                 top: BOARD_PHOTO_AREA.top,
@@ -236,18 +240,11 @@ export default function ViewPhotoPage() {
                 height: BOARD_PHOTO_AREA.height,
               }}
             >
-              {latestPhoto ? (
-                <img
-                  src={latestPhoto.dataUrl}
-                  alt="촬영한 사진"
-                  className="h-full w-full object-contain"
-                  draggable={false}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-white/70 px-3 text-center text-sm text-neutral-500">
-                  아직 촬영된 사진이 없습니다
-                </div>
-              )}
+              <PolaroidPhoto
+                src={latestPhoto?.dataUrl ?? null}
+                rotationDeg={-2.5}
+                className="max-h-[96%] max-w-[94%]"
+              />
             </div>
           </div>
 
@@ -297,5 +294,6 @@ export default function ViewPhotoPage() {
         <ShareSuccessModal onClose={() => setShowShareModal(false)} />
       ) : null}
     </main>
+    </ScreenReadyGate>
   );
 }

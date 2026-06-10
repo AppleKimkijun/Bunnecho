@@ -15,12 +15,14 @@ import {
   type DesktopWindowId,
   type WindowLayout,
 } from "@/components/desktop-window";
+import { ScreenReadyGate } from "@/components/screen-ready-gate";
 import { useRouter } from "next/navigation";
 import { addPhoto } from "@/lib/photo-store";
 import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 import { PARTICLE_COLOR_PALETTE } from "@/lib/particle-colors";
 import { upsertPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
+import { HOME_SCREEN_IMAGE_URLS } from "@/lib/screen-assets";
 import {
   FRAME_PROFILES,
   type FrameVariantId,
@@ -1090,6 +1092,10 @@ export default function Home() {
   ]);
 
   useEffect(() => {
+    if (!isLayoutMounted) {
+      return;
+    }
+
     const frameId = window.requestAnimationFrame(() => {
       void checkPermissionAndInit();
       router.prefetch("/view-photo");
@@ -1099,7 +1105,20 @@ export default function Home() {
       window.cancelAnimationFrame(frameId);
       stopCamera();
     };
-  }, [checkPermissionAndInit, router, stopCamera]);
+  }, [checkPermissionAndInit, isLayoutMounted, router, stopCamera]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!cameraActive || !video || !stream) {
+      return;
+    }
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => undefined);
+    }
+  }, [cameraActive, isLayoutMounted, windowLayouts?.camera.width, windowLayouts?.camera.height]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1198,6 +1217,10 @@ export default function Home() {
   );
 
   return (
+    <ScreenReadyGate
+      assets={HOME_SCREEN_IMAGE_URLS}
+      placeholderClassName="bg-[#b8dcf0]"
+    >
     <main className="fixed inset-0 h-[100dvh] w-full overflow-hidden text-neutral-900">
       <div
         className="pointer-events-none absolute inset-0 select-none"
@@ -1521,5 +1544,6 @@ export default function Home() {
       ) : null}
 
     </main>
+    </ScreenReadyGate>
   );
 }
