@@ -1,6 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  createDefaultWindowLayouts,
+  DEFAULT_WINDOW_Z_ORDER,
+  DesktopWindow,
+  type DesktopWindowId,
+  type WindowLayout,
+} from "@/components/desktop-window";
+import { WindowLayoutPanel } from "@/components/window-layout-panel";
+import {
+  loadDesktopWindowLayout,
+  saveDesktopWindowLayoutDebounced,
+} from "@/lib/desktop-window-layout-store";
 import { useRouter } from "next/navigation";
 import { addPhoto } from "@/lib/photo-store";
 import { upsertRawPhoto } from "@/lib/photo-raw-store";
@@ -19,6 +37,7 @@ type CameraFilter = {
   cssFilter: string;
   overlay: string;
   frameScale: number;
+  frameWidthScale: number;
   bottomOffsetFaceRatio: number;
   frameOffsetXFaceRatio: number;
   frameOffsetYFaceRatio: number;
@@ -69,6 +88,7 @@ const CAMERA_FILTERS: CameraFilter[] = FRAME_PROFILES.map((profile) => ({
   cssFilter: profile.cssFilter,
   overlay: profile.overlay,
   frameScale: profile.frameScale,
+  frameWidthScale: profile.frameWidthScale,
   bottomOffsetFaceRatio: profile.bottomOffsetFaceRatio,
   frameOffsetXFaceRatio: profile.frameOffsetXFaceRatio,
   frameOffsetYFaceRatio: profile.frameOffsetYFaceRatio,
@@ -93,8 +113,8 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "star",
     name: "별",
     imageSrc: "/img/particle/star.png",
-    count: 28,
-    sizeRange: [46, 86],
+    count: 56,
+    sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
     swayCyclesPerFallRange: [0.8, 1.8],
@@ -105,8 +125,8 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "apple",
     name: "사과",
     imageSrc: "/img/particle/apple.png",
-    count: 28,
-    sizeRange: [46, 86],
+    count: 56,
+    sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
     swayCyclesPerFallRange: [0.8, 1.8],
@@ -117,8 +137,8 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "bunny",
     name: "토끼",
     imageSrc: "/img/particle/bunny.png.png",
-    count: 28,
-    sizeRange: [46, 86],
+    count: 56,
+    sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
     swayCyclesPerFallRange: [0.8, 1.8],
@@ -129,8 +149,8 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "rose",
     name: "장미",
     imageSrc: "/img/particle/rose.png",
-    count: 28,
-    sizeRange: [46, 86],
+    count: 56,
+    sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
     swayCyclesPerFallRange: [0.8, 1.8],
@@ -141,14 +161,69 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "note",
     name: "음표",
     imageSrc: "/img/particle/note.png",
-    count: 28,
-    sizeRange: [46, 86],
+    count: 56,
+    sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
     swayCyclesPerFallRange: [0.8, 1.8],
     spinDegPerSecRange: [-42, 42],
     opacityRange: [0.65, 0.96],
   },
+];
+
+const DESKTOP_BG_URL = "/img/background/Desktop.png";
+const DESKTOP_LOGO_IMG = "/img/logo/로고 이미지.png";
+const CAMERA_TITLE_IMG = "/img/icon/1_카메라 창 이름.png";
+const CAMERA_CAPTURE_BTN_IMG = "/img/icon/1_카메라 버튼.png";
+
+/**
+ * 첫 화면 레이아웃 — 위치(top/left/right/bottom)와 zIndex는 여기서 수정하세요.
+ */
+const HOME_LAYOUT = {
+  zIndex: {
+    background: 0,
+    desktopLogo: 10,
+    windowBase: 20,
+  },
+  desktopLogo: {
+    top: "2rem",
+    left: "2.5rem",
+    width: "clamp(120px, 14vw, 220px)",
+  },
+} as const;
+
+const PARTICLE_UI_PRESETS = PARTICLE_PRESETS.filter(
+  (preset) => preset.id !== "none",
+);
+
+const PARTICLE_ICON_BY_ID: Record<string, string> = {
+  star: "/img/particle_icon/2_파티클_별.png",
+  apple: "/img/particle_icon/2_파티클_사과.png",
+  bunny: "/img/particle_icon/2_파티클_토끼.png",
+  note: "/img/particle_icon/2_파티클_음표.png",
+  rose: "/img/particle_icon/2_파티클_장미.png",
+};
+
+const PARTICLE_LABEL_BY_ID: Record<string, string> = {
+  star: "Star",
+  apple: "Apple",
+  bunny: "Bunny",
+  note: "Note",
+  rose: "Rose",
+};
+
+const FRAME_GRID_SLOTS: Array<{
+  filterId: FrameVariantId | null;
+  thumbSrc: string | null;
+}> = [
+  { filterId: "lop_bunny", thumbSrc: "/img/frame/lop_bunny.png" },
+  { filterId: "bunny", thumbSrc: "/img/frame/bunny.png" },
+  { filterId: "cloud", thumbSrc: "/img/frame/3_구름.png" },
+  { filterId: null, thumbSrc: null },
+  { filterId: null, thumbSrc: null },
+  { filterId: null, thumbSrc: null },
+  { filterId: null, thumbSrc: null },
+  { filterId: null, thumbSrc: null },
 ];
 
 type OverlayRect = {
@@ -159,27 +234,20 @@ type OverlayRect = {
 };
 
 function getFrameBox(face: FaceBox, filter: CameraFilter) {
-  const size = Math.max(face.width, face.height) * filter.frameScale;
+  const height = Math.max(face.width, face.height) * filter.frameScale;
+  const width = height * filter.frameWidthScale;
   const x =
     face.x +
     face.width / 2 -
-    size / 2 +
+    width / 2 +
     face.width * filter.frameOffsetXFaceRatio;
   const y =
     face.y +
     face.height -
-    size +
+    height +
     face.height * filter.bottomOffsetFaceRatio +
     face.height * filter.frameOffsetYFaceRatio;
-  return { x, y, width: size, height: size };
-}
-
-function chunkByTen<T>(items: T[]) {
-  const result: T[][] = [];
-  for (let index = 0; index < items.length; index += 10) {
-    result.push(items.slice(index, index + 10));
-  }
-  return result;
+  return { x, y, width, height };
 }
 
 function mapVideoRectToViewport(
@@ -368,8 +436,25 @@ export default function Home() {
   >("none");
   const [particleElapsedMs, setParticleElapsedMs] = useState(0);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [isLayoutMounted, setIsLayoutMounted] = useState(false);
+  const [customWindowLayouts, setCustomWindowLayouts] = useState<Record<
+    DesktopWindowId,
+    WindowLayout
+  > | null>(null);
+  const [windowZOrder, setWindowZOrder] = useState<DesktopWindowId[]>(
+    DEFAULT_WINDOW_Z_ORDER,
+  );
+  const [layoutUpdatedAt, setLayoutUpdatedAt] = useState<string | null>(null);
+
+  const windowLayouts = isLayoutMounted
+    ? (customWindowLayouts ??
+      createDefaultWindowLayouts(window.innerWidth, window.innerHeight))
+    : null;
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(
+    null,
+  );
   const frameImageMapRef = useRef<Record<string, HTMLImageElement>>({});
   const particleAnimationStartRef = useRef(0);
   const overlayImageRefs = useRef<Array<HTMLImageElement | null>>([]);
@@ -382,7 +467,6 @@ export default function Home() {
   const selectedParticlePreset =
     PARTICLE_PRESETS.find((particle) => particle.id === selectedParticleId) ??
     PARTICLE_PRESETS[0];
-  const pagedFilters = useMemo(() => chunkByTen(CAMERA_FILTERS), []);
   const hasFrameFilter = selectedFilter.frameImageSrc !== null;
   const showPermissionModal = permissionState !== "granted";
   const isDenied = permissionState === "denied";
@@ -438,6 +522,29 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    setIsLayoutMounted(true);
+
+    const savedLayout = loadDesktopWindowLayout();
+    if (savedLayout) {
+      setCustomWindowLayouts(savedLayout.layouts);
+      setWindowZOrder(savedLayout.zOrder);
+      setLayoutUpdatedAt(savedLayout.updatedAt);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLayoutMounted || !customWindowLayouts) {
+      return;
+    }
+
+    saveDesktopWindowLayoutDebounced({
+      layouts: customWindowLayouts,
+      zOrder: windowZOrder,
+    });
+    setLayoutUpdatedAt(new Date().toISOString());
+  }, [customWindowLayouts, isLayoutMounted, windowZOrder]);
+
+  useEffect(() => {
     const updateViewportSize = () => {
       const viewport = viewportRef.current;
       if (!viewport) {
@@ -457,6 +564,28 @@ export default function Home() {
       window.removeEventListener("resize", updateViewportSize);
     };
   }, []);
+
+  const bringWindowToFront = useCallback((windowId: DesktopWindowId) => {
+    setWindowZOrder((prev) => [...prev.filter((id) => id !== windowId), windowId]);
+  }, []);
+
+  const updateWindowLayout = useCallback(
+    (windowId: DesktopWindowId, layout: WindowLayout) => {
+      setCustomWindowLayouts((prev) => {
+        const base =
+          prev ??
+          createDefaultWindowLayouts(window.innerWidth, window.innerHeight);
+        return { ...base, [windowId]: layout };
+      });
+    },
+    [],
+  );
+
+  const getWindowZIndex = useCallback(
+    (windowId: DesktopWindowId) =>
+      HOME_LAYOUT.zIndex.windowBase + windowZOrder.indexOf(windowId),
+    [windowZOrder],
+  );
 
   useEffect(() => {
     if (selectedParticlePreset.id === "none") {
@@ -906,228 +1035,387 @@ export default function Home() {
     };
   }, [capturePhoto]);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    const DOUBLE_TAP_MS = 300;
+    const DOUBLE_TAP_MAX_DIST_PX = 48;
+
+    const isInteractiveTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      return Boolean(target.closest("button, a, input, textarea, select"));
+    };
+
+    const onTouchEnd = (event: TouchEvent) => {
+      if (showPermissionModal || isCapturingTransition || !cameraActive) {
+        return;
+      }
+      if (isInteractiveTarget(event.target)) {
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+      if (!touch) {
+        return;
+      }
+
+      const now = Date.now();
+      const lastTap = lastTapRef.current;
+      if (
+        lastTap &&
+        now - lastTap.time <= DOUBLE_TAP_MS &&
+        Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y) <=
+          DOUBLE_TAP_MAX_DIST_PX
+      ) {
+        event.preventDefault();
+        lastTapRef.current = null;
+        capturePhoto();
+        return;
+      }
+
+      lastTapRef.current = {
+        time: now,
+        x: touch.clientX,
+        y: touch.clientY,
+      };
+    };
+
+    viewport.addEventListener("touchend", onTouchEnd, { passive: false });
+    return () => {
+      viewport.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [
+    cameraActive,
+    capturePhoto,
+    isCapturingTransition,
+    showPermissionModal,
+  ]);
+
+  const handleViewportDoubleClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (showPermissionModal || isCapturingTransition || !cameraActive) {
+        return;
+      }
+      if (event.target instanceof HTMLElement) {
+        if (event.target.closest("button, a, input, textarea, select")) {
+          return;
+        }
+      }
+      capturePhoto();
+    },
+    [
+      cameraActive,
+      capturePhoto,
+      isCapturingTransition,
+      showPermissionModal,
+    ],
+  );
+
   return (
-    <main
-      ref={viewportRef}
-      className="relative min-h-svh w-full overflow-hidden bg-black text-white"
-    >
-      <video
-        ref={videoRef}
-        className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
-          isDenied ? "opacity-0" : "opacity-100"
-        }`}
-        style={{
-          filter: "none",
-          transform: "scaleX(-1)",
-        }}
-        muted
-        playsInline
-      />
-
+    <main className="fixed inset-0 h-[100dvh] w-full overflow-hidden text-neutral-900">
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 select-none"
         style={{
-          background: isDenied ? "rgba(0,0,0,1)" : "transparent",
-          boxShadow: "inset 0 0 120px rgba(0,0,0,0.35)",
+          zIndex: HOME_LAYOUT.zIndex.background,
+          backgroundImage: `url(${DESKTOP_BG_URL})`,
+          backgroundSize: "100% 100%",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }}
+        aria-hidden
+      />
+
+      <img
+        src={DESKTOP_LOGO_IMG}
+        alt="Bunnecho"
+        className="pointer-events-none absolute hidden h-auto md:block"
+        style={{
+          zIndex: HOME_LAYOUT.zIndex.desktopLogo,
+          top: HOME_LAYOUT.desktopLogo.top,
+          left: HOME_LAYOUT.desktopLogo.left,
+          width: HOME_LAYOUT.desktopLogo.width,
         }}
       />
 
-      {showShutterFlash && (
-        <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/85" />
-      )}
-
-      {cameraActive && selectedParticlePreset.id !== "none" && (
-        <div className="pointer-events-none absolute inset-0 z-[25] overflow-hidden">
-          {renderedParticles.map((particle, index) => (
-            <div
-              key={`particle-${index}`}
-              ref={(node) => {
-                particleNodeRefs.current[index] = node;
-              }}
-              className="particle-item absolute select-none"
-              data-rotation-deg={particle.rotationDeg}
-              data-opacity-value={particle.opacity}
-              data-color-value={particle.color}
-              data-image-src={particle.imageSrc}
-              style={{
-                left: `${particle.x}px`,
-                top: `${particle.y}px`,
-                transform: `translate(-50%, -50%) rotate(${particle.rotationDeg}deg)`,
-                width: `${particle.sizePx}px`,
-                height: `${particle.sizePx}px`,
-                backgroundColor: particle.color,
-                WebkitMaskImage: `url(${particle.imageSrc})`,
-                maskImage: `url(${particle.imageSrc})`,
-                WebkitMaskRepeat: "no-repeat",
-                maskRepeat: "no-repeat",
-                WebkitMaskPosition: "center",
-                maskPosition: "center",
-                WebkitMaskSize: "contain",
-                maskSize: "contain",
-                opacity: particle.opacity,
-              }}
-              aria-hidden
+      {windowLayouts ? (
+        <DesktopWindow
+          windowId="camera"
+          layout={windowLayouts.camera}
+          zIndex={getWindowZIndex("camera")}
+          onFocus={() => bringWindowToFront("camera")}
+          onLayoutChange={(layout) => updateWindowLayout("camera", layout)}
+          titleBar={
+            <img
+              src={CAMERA_TITLE_IMG}
+              alt="Bunnecho"
+              className="h-5 w-auto"
             />
-          ))}
-        </div>
-      )}
-
-      {cameraActive &&
-        hasFrameFilter &&
-        mappedOverlays.map((mappedOverlay, index) => (
-          <img
-            key={`frame-overlay-${index}`}
-            ref={(node) => {
-              overlayImageRefs.current[index] = node;
-            }}
-            src={selectedFilter.frameImageSrc ?? undefined}
-            alt={`${selectedFilter.name} 프레임`}
-            className="pointer-events-none absolute z-20 select-none"
-            style={{
-              left: `${mappedOverlay.x}px`,
-              top: `${mappedOverlay.y}px`,
-              width: `${mappedOverlay.width}px`,
-              height: `${mappedOverlay.height}px`,
-            }}
-          />
-        ))}
-
-      {capturedFrame && (
-        <div
-          className={`pointer-events-none absolute inset-0 z-40 transition-all ${
-            capturePhase === "freeze"
-              ? "duration-300 ease-out scale-[0.988] opacity-100"
-              : capturePhase === "slide"
-                ? "duration-700 ease-[cubic-bezier(0.22,0.8,0.2,1)] translate-x-[116%] scale-[0.985] opacity-0"
-                : "duration-150 ease-linear scale-100 opacity-100"
-          }`}
+          }
+          footer={
+            <p className="pointer-events-none mt-2 text-center text-xs text-white/90 drop-shadow-sm">
+              {message}
+            </p>
+          }
         >
-          <img
-            src={capturedFrame}
-            alt="방금 촬영한 사진"
-            className="h-full w-full object-cover"
-          />
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/55 px-4 py-2 text-lg font-semibold text-white">
-            찰칵
-          </div>
-        </div>
-      )}
+            <div
+              ref={viewportRef}
+              onDoubleClick={handleViewportDoubleClick}
+              className="relative min-h-0 w-full flex-1 overflow-hidden bg-[#d9d9d9]"
+            >
+              <video
+                ref={videoRef}
+                className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
+                  isDenied ? "opacity-0" : "opacity-100"
+                }`}
+                style={{
+                  filter: "none",
+                  transform: "scaleX(-1)",
+                }}
+                muted
+                playsInline
+              />
 
-      <div className="absolute inset-x-0 top-0 z-10 bg-linear-to-b from-black/70 to-transparent px-4 pb-8 pt-4 md:px-8">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
-            Bunnecho Camera
-          </h1>
-          <p className="mt-1 text-xs text-white/80 md:text-sm">{message}</p>
-        </div>
-      </div>
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  background: isDenied ? "rgba(0,0,0,1)" : "transparent",
+                }}
+              />
 
-      <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-black/85 via-black/60 to-transparent px-3 pb-3 pt-12 md:px-6 md:pb-6">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
-          <div className="flex items-center justify-end gap-3">
-            <div className="rounded-full border border-white/35 bg-black/35 px-3 py-1 text-xs">
-              엔터로 촬영
-            </div>
-            <div className="rounded-full border border-white/35 bg-black/35 px-3 py-1 text-xs">
-              현재 필터: {selectedFilter.name}
-            </div>
-          </div>
+              {showShutterFlash && (
+                <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/85" />
+              )}
 
-          <div className="overflow-x-auto rounded-xl border border-white/25 bg-black/45 p-2">
-            <div className="flex w-full snap-x snap-mandatory">
-              {pagedFilters.map((group, pageIndex) => (
-                <div
-                  key={`filter-page-${pageIndex}`}
-                  className="grid min-w-full snap-start grid-cols-5 gap-2 md:grid-cols-10"
-                >
-                  {group.map((filter) => {
-                    const selected = filter.id === selectedFilter.id;
-                    return (
-                      <button
-                        key={filter.id}
-                        type="button"
-                        onClick={() => setSelectedFilterId(filter.id)}
-                        className={`rounded-lg border px-2 py-2 text-[11px] leading-tight transition md:text-xs ${
-                          selected
-                            ? "border-white bg-white text-black"
-                            : "border-white/35 bg-black/35 text-white hover:bg-white/15"
-                        }`}
-                      >
-                        {filter.name}
-                      </button>
-                    );
-                  })}
+              {cameraActive && selectedParticlePreset.id !== "none" && (
+                <div className="pointer-events-none absolute inset-0 z-[25] overflow-hidden">
+                  {renderedParticles.map((particle, index) => (
+                    <div
+                      key={`particle-${index}`}
+                      ref={(node) => {
+                        particleNodeRefs.current[index] = node;
+                      }}
+                      className="particle-item absolute select-none"
+                      data-rotation-deg={particle.rotationDeg}
+                      data-opacity-value={particle.opacity}
+                      data-color-value={particle.color}
+                      data-image-src={particle.imageSrc}
+                      style={{
+                        left: `${particle.x}px`,
+                        top: `${particle.y}px`,
+                        transform: `translate(-50%, -50%) rotate(${particle.rotationDeg}deg)`,
+                        width: `${particle.sizePx}px`,
+                        height: `${particle.sizePx}px`,
+                        backgroundColor: particle.color,
+                        WebkitMaskImage: `url(${particle.imageSrc})`,
+                        maskImage: `url(${particle.imageSrc})`,
+                        WebkitMaskRepeat: "no-repeat",
+                        maskRepeat: "no-repeat",
+                        WebkitMaskPosition: "center",
+                        maskPosition: "center",
+                        WebkitMaskSize: "contain",
+                        maskSize: "contain",
+                        opacity: particle.opacity,
+                      }}
+                      aria-hidden
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
 
-          <div className="rounded-xl border border-white/25 bg-black/45 p-2">
-            <div className="mb-2 text-[11px] text-white/80 md:text-xs">파티클</div>
-            <div className="flex flex-wrap gap-2">
-              {PARTICLE_PRESETS.map((particlePreset) => {
-                const selected = particlePreset.id === selectedParticlePreset.id;
+              {cameraActive &&
+                hasFrameFilter &&
+                mappedOverlays.map((mappedOverlay, index) => (
+                  <img
+                    key={`frame-overlay-${index}`}
+                    ref={(node) => {
+                      overlayImageRefs.current[index] = node;
+                    }}
+                    src={selectedFilter.frameImageSrc ?? undefined}
+                    alt={`${selectedFilter.name} 프레임`}
+                    className="pointer-events-none absolute z-20 select-none"
+                    style={{
+                      left: `${mappedOverlay.x}px`,
+                      top: `${mappedOverlay.y}px`,
+                      width: `${mappedOverlay.width}px`,
+                      height: `${mappedOverlay.height}px`,
+                    }}
+                  />
+                ))}
+
+              {capturedFrame && (
+                <div
+                  className={`pointer-events-none absolute inset-0 z-40 transition-all ${
+                    capturePhase === "freeze"
+                      ? "duration-300 ease-out scale-[0.988] opacity-100"
+                      : capturePhase === "slide"
+                        ? "duration-700 ease-[cubic-bezier(0.22,0.8,0.2,1)] translate-x-[116%] scale-[0.985] opacity-0"
+                        : "duration-150 ease-linear scale-100 opacity-100"
+                  }`}
+                >
+                  <img
+                    src={capturedFrame}
+                    alt="방금 촬영한 사진"
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/55 px-4 py-2 text-lg font-semibold text-white">
+                    찰칵
+                  </div>
+                </div>
+              )}
+
+              {showPermissionModal && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                  <div className="w-full max-w-[280px] rounded-xl border border-black/10 bg-white p-4 text-neutral-900 shadow-lg">
+                    <h2 className="text-base font-semibold">카메라 권한 필요</h2>
+                    <p className="mt-2 text-xs leading-relaxed text-neutral-600">
+                      {isDenied
+                        ? "권한이 거절되었습니다. 아래 버튼으로 다시 시도해주세요."
+                        : "촬영을 위해 카메라 권한을 허용해주세요."}
+                    </p>
+                    <button
+                      onClick={startCamera}
+                      type="button"
+                      className="mt-4 w-full rounded-lg bg-neutral-900 py-2 text-sm text-white transition hover:bg-neutral-800"
+                      disabled={permissionState === "requesting"}
+                    >
+                      {permissionState === "requesting"
+                        ? "권한 요청 중..."
+                        : isDenied
+                          ? "카메라 권한 재시도"
+                          : "카메라 권한 허용"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center justify-center border-t border-black/8 bg-white py-4">
+              <button
+                type="button"
+                onClick={capturePhoto}
+                disabled={
+                  !cameraActive ||
+                  isCapturingTransition ||
+                  showPermissionModal
+                }
+                className="rounded-full transition hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="사진 촬영"
+              >
+                <img
+                  src={CAMERA_CAPTURE_BTN_IMG}
+                  alt=""
+                  className="h-14 w-14 object-contain md:h-16 md:w-16"
+                />
+              </button>
+            </div>
+        </DesktopWindow>
+      ) : null}
+
+      {windowLayouts ? (
+        <DesktopWindow
+          windowId="particle"
+          layout={windowLayouts.particle}
+          zIndex={getWindowZIndex("particle")}
+          onFocus={() => bringWindowToFront("particle")}
+          onLayoutChange={(layout) => updateWindowLayout("particle", layout)}
+        >
+            <div className="flex h-full min-h-0 items-start justify-between gap-1 overflow-auto bg-white px-3 py-4">
+              {PARTICLE_UI_PRESETS.map((particlePreset) => {
+                const selected =
+                  particlePreset.id === selectedParticlePreset.id;
+                const iconSrc = PARTICLE_ICON_BY_ID[particlePreset.id];
                 return (
                   <button
                     key={particlePreset.id}
                     type="button"
                     onClick={() => setSelectedParticleId(particlePreset.id)}
-                    className={`rounded-lg border px-3 py-2 text-[11px] leading-tight transition md:text-xs ${
+                    className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-lg px-1 py-1 transition ${
                       selected
-                        ? "border-white bg-white text-black"
-                        : "border-white/35 bg-black/35 text-white hover:bg-white/15"
+                        ? "bg-violet-50 ring-2 ring-violet-400"
+                        : "hover:bg-neutral-50"
                     }`}
                   >
-                    <span className="flex items-center gap-2">
-                      {particlePreset.imageSrc ? (
-                        <span
-                          className="inline-block h-4 w-4"
-                          style={{
-                            backgroundColor: PARTICLE_COLOR_PALETTE[0],
-                            WebkitMaskImage: `url(${particlePreset.imageSrc})`,
-                            maskImage: `url(${particlePreset.imageSrc})`,
-                            WebkitMaskRepeat: "no-repeat",
-                            maskRepeat: "no-repeat",
-                            WebkitMaskPosition: "center",
-                            maskPosition: "center",
-                            WebkitMaskSize: "contain",
-                            maskSize: "contain",
-                          }}
-                          aria-hidden
-                        />
-                      ) : null}
-                      {particlePreset.name}
+                    {iconSrc ? (
+                      <img
+                        src={iconSrc}
+                        alt=""
+                        className="h-11 w-11 object-contain md:h-12 md:w-12"
+                      />
+                    ) : null}
+                    <span className="font-serif text-[11px] italic text-neutral-700 md:text-xs">
+                      {PARTICLE_LABEL_BY_ID[particlePreset.id] ??
+                        particlePreset.name}
                     </span>
                   </button>
                 );
               })}
             </div>
-          </div>
-        </div>
-      </div>
+        </DesktopWindow>
+      ) : null}
 
-      {showPermissionModal && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-white/20 bg-black/85 p-5 text-white">
-            <h2 className="text-lg font-semibold">카메라 권한 필요</h2>
-            <p className="mt-2 text-sm text-white/85">
-              {isDenied
-                ? "권한이 거절되어 화면이 검게 표시됩니다. 아래 버튼으로 다시 시도해주세요."
-                : "촬영을 위해 카메라 권한을 허용해주세요."}
-            </p>
-            <button
-              onClick={startCamera}
-              type="button"
-              className="mt-4 w-full rounded-md bg-white py-2 text-black transition hover:bg-white/90"
-              disabled={permissionState === "requesting"}
-            >
-              {permissionState === "requesting"
-                ? "권한 요청 중..."
-                : "카메라 권한 재시도"}
-            </button>
-          </div>
-        </div>
-      )}
+      {windowLayouts ? (
+        <DesktopWindow
+          windowId="frame"
+          layout={windowLayouts.frame}
+          zIndex={getWindowZIndex("frame")}
+          onFocus={() => bringWindowToFront("frame")}
+          onLayoutChange={(layout) => updateWindowLayout("frame", layout)}
+        >
+            <div className="grid h-full min-h-0 grid-cols-4 grid-rows-2 gap-2 overflow-auto bg-white p-3">
+              {FRAME_GRID_SLOTS.map((slot, index) => {
+                const selected =
+                  slot.filterId !== null &&
+                  slot.filterId === selectedFilterId;
+                const isSelectable = slot.filterId !== null;
+
+                if (!slot.thumbSrc) {
+                  return (
+                    <div
+                      key={`frame-slot-${index}`}
+                      className="aspect-square rounded-md bg-[#b5b5b5]"
+                      aria-hidden
+                    />
+                  );
+                }
+
+                return (
+                  <button
+                    key={`frame-slot-${index}`}
+                    type="button"
+                    disabled={!isSelectable}
+                    onClick={() => {
+                      if (slot.filterId) {
+                        setSelectedFilterId(slot.filterId);
+                      }
+                    }}
+                    className={`flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#b5b5b5] p-1 transition ${
+                      selected ? "ring-2 ring-violet-400" : ""
+                    } ${isSelectable ? "hover:brightness-105" : "cursor-default opacity-90"}`}
+                  >
+                    <img
+                      src={slot.thumbSrc}
+                      alt=""
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+        </DesktopWindow>
+      ) : null}
+
+      {windowLayouts ? (
+        <WindowLayoutPanel
+          layouts={windowLayouts}
+          updatedAt={layoutUpdatedAt}
+        />
+      ) : null}
+
     </main>
   );
 }

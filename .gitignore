@@ -1,5 +1,8 @@
 node_modules
 
+# macOS
+.DS_Store
+
 # Next.js
 .next
 next-env.d.ts
