@@ -23,10 +23,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "plain",
     name: "기본 필터",
     frameImageSrc: null,
-    // 캡처 결과 톤 보정 (미리보기에는 적용되지 않음)
-    // 밝기: brightness(1.03~1.10)
-    // 붉은기 완화: hue-rotate(0deg~4deg)
-    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
+    cssFilter: "none",
     overlay: "transparent",
     frameScale: 2.2,
     frameWidthScale: 1,
@@ -40,7 +37,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "bunny",
     name: "기본 버니 필터",
     frameImageSrc: "/img/frame/bunny.png",
-    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
+    cssFilter: "none",
     overlay: "transparent",
     frameScale: 2.2,
     frameWidthScale: 1,
@@ -54,7 +51,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "lop_bunny",
     name: "롭 버니 필터",
     frameImageSrc: "/img/frame/lop_bunny.png",
-    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
+    cssFilter: "none",
     overlay: "transparent",
     frameScale: 2,
     frameWidthScale: 1,
@@ -68,7 +65,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     id: "cloud",
     name: "구름 필터",
     frameImageSrc: "/img/frame/3_구름.png",
-    cssFilter: "brightness(1) saturate(1.02) contrast(1.02) hue-rotate(2deg)",
+    cssFilter: "none",
     overlay: "transparent",
     frameScale: 2.2,
     frameWidthScale: 1.5,

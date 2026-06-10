@@ -39,6 +39,7 @@ export const VIEW_PHOTO_SCREEN_IMAGE_URLS = [
   "/img/background/background2.png",
   "/img/board/board.png",
   "/img/board/board_logo.png",
+  "/img/board/polaroid.png",
   "/img/button/카메라 이동.png",
   "/img/button/공유 버튼.png",
 ] as const;

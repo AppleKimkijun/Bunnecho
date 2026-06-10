@@ -111,7 +111,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "star",
     name: "별",
     imageSrc: "/img/particle/star.png",
-    count: 56,
+    count: 120,
     sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -123,7 +123,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "apple",
     name: "사과",
     imageSrc: "/img/particle/apple.png",
-    count: 56,
+    count: 120,
     sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -135,7 +135,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "bunny",
     name: "토끼",
     imageSrc: "/img/particle/bunny.png.png",
-    count: 56,
+    count: 120,
     sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -147,7 +147,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "rose",
     name: "장미",
     imageSrc: "/img/particle/rose.png",
-    count: 56,
+    count: 120,
     sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -159,7 +159,7 @@ const PARTICLE_PRESETS: ParticlePreset[] = [
     id: "note",
     name: "음표",
     imageSrc: "/img/particle/note.png",
-    count: 56,
+    count: 120,
     sizeRange: [20, 38],
     durationRangeMs: [6500, 9800],
     swayRangePx: [6, 22],
@@ -372,7 +372,7 @@ function createParticleSeeds(preset: ParticlePreset): ParticleSeed[] {
 }
 
 const PARTICLE_VIEWPORT_REFERENCE = { width: 883, height: 559 };
-const PARTICLE_FADE_START_VIEWPORT_RATIO = 0.85;
+const PARTICLE_FADE_START_VIEWPORT_RATIO = 0.9;
 
 function mapParticlesToViewport(
   seeds: ParticleSeed[],
@@ -1007,7 +1007,7 @@ export default function Home() {
     }
 
     finalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    finalCtx.filter = selectedFilter.cssFilter;
+    finalCtx.filter = "none";
     finalCtx.translate(outWidth, 0);
     finalCtx.scale(-1, 1);
     finalCtx.translate(CAPTURE_X_NUDGE_PX, 0);
@@ -1306,7 +1306,7 @@ export default function Home() {
                       style={{
                         left: `${particle.x}px`,
                         top: `${particle.y}px`,
-                        transform: `translate(-50%, -50%) rotate(${particle.rotationDeg}deg)`,
+                        transform: `translate3d(-50%, -50%, 0) rotate(${particle.rotationDeg}deg)`,
                         width: `${particle.sizePx}px`,
                         height: `${particle.sizePx}px`,
                         backgroundColor: particle.color,
@@ -1316,9 +1316,10 @@ export default function Home() {
                         maskRepeat: "no-repeat",
                         WebkitMaskPosition: "center",
                         maskPosition: "center",
-                        WebkitMaskSize: "contain",
-                        maskSize: "contain",
+                        WebkitMaskSize: "100% 100%",
+                        maskSize: "100% 100%",
                         opacity: particle.opacity,
+                        backfaceVisibility: "hidden",
                       }}
                       aria-hidden
                     />
@@ -1497,7 +1498,7 @@ export default function Home() {
                         key={`frame-slot-${index}`}
                         type="button"
                         onClick={() => toggleFilterSelection(slot.filterId!)}
-                        className={`flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#b5b5b5] transition hover:brightness-105 ${
+                        className={`flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#b5b5b5] transition ${
                           selected ? "ring-2 ring-violet-400" : ""
                         }`}
                       >
@@ -1529,7 +1530,7 @@ export default function Home() {
                     }}
                     className={`flex aspect-square items-center justify-center overflow-hidden rounded-md bg-[#b5b5b5] p-1 transition ${
                       selected ? "ring-2 ring-violet-400" : ""
-                    } ${isSelectable ? "hover:brightness-105" : "cursor-default opacity-90"}`}
+                    } ${isSelectable ? "" : "cursor-default opacity-90"}`}
                   >
                     <img
                       src={slot.thumbSrc}

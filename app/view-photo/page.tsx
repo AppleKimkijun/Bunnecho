@@ -25,18 +25,19 @@ const BUTTON_ASPECT = 2501 / 1181;
 
 /** scale 1 기준 레이아웃 (화면에 맞춰 비율로 축소·확대) */
 const LAYOUT_BASE = {
-  boardWidth: 980,
+  boardWidth: 1140,
+  boardHeightScale: 1.22,
   buttonWidth: 300,
   rowGap: 0,
   columnGap: 0,
 } as const;
 
-/** 보드 안 촬영 사진 위치·크기 — 보드 PNG 기준 % (여기서 수정) */
+/** 보드 안 촬영 사진 위치·크기 — 보드 PNG 기준 % + px 보정 (scale 1 기준) */
 const BOARD_PHOTO_AREA = {
-  left: "19%",
-  top: "21.5%",
-  width: "62%",
-  height: "58%",
+  left: "calc(17% + 50px)",
+  top: "calc(18% - 20px)",
+  width: "calc(66% - 100px)",
+  height: "calc(66% + 100px)",
 } as const;
 
 /** 보드 왼쪽 상단 로고 */
@@ -46,8 +47,12 @@ const BOARD_LOGO_AREA = {
   width: "19%",
 } as const;
 
+function getBoardHeight(boardWidth: number) {
+  return (boardWidth / BOARD_ASPECT) * LAYOUT_BASE.boardHeightScale;
+}
+
 function getLayoutMetrics(isStacked: boolean) {
-  const boardHeight = LAYOUT_BASE.boardWidth / BOARD_ASPECT;
+  const boardHeight = getBoardHeight(LAYOUT_BASE.boardWidth);
   const buttonHeight = LAYOUT_BASE.buttonWidth / BUTTON_ASPECT;
 
   if (isStacked) {
@@ -80,7 +85,7 @@ function useViewPhotoScale(isStacked: boolean) {
         availableHeight / contentHeight,
       );
 
-      setScale(Math.max(0.42, Math.min(nextScale, 1.65)));
+      setScale(Math.max(0.42, Math.min(nextScale, 1.85)));
     };
 
     updateScale();
@@ -187,7 +192,7 @@ export default function ViewPhotoPage() {
     }
   };
 
-  const boardHeight = LAYOUT_BASE.boardWidth / BOARD_ASPECT;
+  const boardHeight = getBoardHeight(LAYOUT_BASE.boardWidth);
 
   return (
     <ScreenReadyGate assets={VIEW_PHOTO_SCREEN_IMAGE_URLS}>
@@ -232,7 +237,7 @@ export default function ViewPhotoPage() {
             />
 
             <div
-              className="absolute flex items-center justify-center"
+              className="absolute flex items-center justify-center "
               style={{
                 left: BOARD_PHOTO_AREA.left,
                 top: BOARD_PHOTO_AREA.top,
@@ -243,7 +248,6 @@ export default function ViewPhotoPage() {
               <PolaroidPhoto
                 src={latestPhoto?.dataUrl ?? null}
                 rotationDeg={-2.5}
-                className="max-h-[96%] max-w-[94%]"
               />
             </div>
           </div>

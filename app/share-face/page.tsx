@@ -8,6 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { PencilXMark } from "@/components/pencil-x-mark";
 import { Button } from "@/components/ui/button";
 import {
   getSharedFacesServerSnapshot,
@@ -52,7 +53,7 @@ function makeBubble(
   width: number,
   height: number,
 ): Bubble {
-  const size = seedRange(`${item.id}-size`, 120, 164);
+  const size = seedRange(`${item.id}-size`, 190, 260);
   const maxX = Math.max(width - size, 1);
   const maxY = Math.max(height - size, 1);
 
@@ -155,8 +156,43 @@ export default function ShareFacePage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bubblesRef = useRef<Bubble[]>([]);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
+  const [hoveredBubbleId, setHoveredBubbleId] = useState<string | null>(null);
 
   const memoFaces = useMemo(() => sharedFaces, [sharedFaces]);
+  const hoveredBubble = useMemo(
+    () => bubbles.find((bubble) => bubble.id === hoveredBubbleId) ?? null,
+    [bubbles, hoveredBubbleId],
+  );
+  const hoveredBubbleRotation = hoveredBubble
+    ? seedRange(`${hoveredBubble.id}-xrot`, -12, 12)
+    : 0;
+
+  const updateHoveredBubble = (clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const pointerX = clientX - rect.left;
+    const pointerY = clientY - rect.top;
+
+    let nextHoveredId: string | null = null;
+
+    for (const bubble of bubblesRef.current) {
+      const { cx, cy } = getBubbleCenter(bubble);
+      const hitRadius = bubble.size * 0.52;
+
+      if (Math.hypot(pointerX - cx, pointerY - cy) <= hitRadius) {
+        nextHoveredId = bubble.id;
+        break;
+      }
+    }
+
+    setHoveredBubbleId((current) =>
+      current === nextHoveredId ? current : nextHoveredId,
+    );
+  };
 
   useEffect(() => {
     const width = containerRef.current?.clientWidth ?? window.innerWidth;
@@ -235,7 +271,6 @@ export default function ShareFacePage() {
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: `url(${BG_URL})` }}
       />
-      <div className="absolute inset-0 bg-black/25" />
 
       <div className="relative z-10 flex items-center justify-between px-4 py-4 md:px-8">
         <h1 className="text-lg font-semibold text-white md:text-2xl">
@@ -253,7 +288,15 @@ export default function ShareFacePage() {
           </div>
         </div>
       ) : (
-        <div className="absolute inset-0 z-10">
+        <div
+          className="absolute inset-0 z-10"
+          onPointerMove={(event) => {
+            updateHoveredBubble(event.clientX, event.clientY);
+          }}
+          onPointerLeave={() => {
+            setHoveredBubbleId(null);
+          }}
+        >
           {bubbles.map((bubble) => (
             <img
               key={bubble.id}
@@ -265,10 +308,22 @@ export default function ShareFacePage() {
                 height: `${bubble.size}px`,
                 transform: `translate(${bubble.x}px, ${bubble.y}px)`,
                 willChange: "transform",
-                filter: "drop-shadow(0 8px 14px rgba(0,0,0,0.28))",
               }}
             />
           ))}
+
+          {hoveredBubble ? (
+            <div
+              className="pointer-events-none absolute z-20 drop-shadow-[0_3px_6px_rgba(239,79,115,0.35)]"
+              style={{
+                left: hoveredBubble.x + hoveredBubble.size / 2,
+                top: hoveredBubble.y + hoveredBubble.size / 2,
+                transform: `translate(-50%, -50%) rotate(${hoveredBubbleRotation}deg)`,
+              }}
+            >
+              <PencilXMark size={hoveredBubble.size * 1.28} />
+            </div>
+          ) : null}
         </div>
       )}
     </main>

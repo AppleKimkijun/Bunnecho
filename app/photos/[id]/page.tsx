@@ -44,13 +44,12 @@ export default function PhotoDetailPage() {
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-black/70 p-3">
+      <div className="overflow-hidden rounded-xl border bg-white p-3">
         <img
           src={photo.dataUrl}
           alt={photo.title || "사진"}
           className="mx-auto max-h-[70svh] w-auto max-w-full rounded object-contain"
           style={{
-            filter: `brightness(${photo.edits.brightness}%) contrast(${photo.edits.contrast}%) saturate(${photo.edits.saturate}%)`,
             transform: `rotate(${photo.edits.rotate}deg)`,
           }}
         />
