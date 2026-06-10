@@ -9,10 +9,9 @@ import {
   subscribePhotos,
 } from "@/lib/photo-store";
 import { getPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
+import { getRawPhoto } from "@/lib/photo-raw-store";
 import { upsertSharedFaces } from "@/lib/shared-face-store";
 import { PolaroidPhoto } from "@/components/polaroid-photo";
-import { ScreenReadyGate } from "@/components/screen-ready-gate";
-import { VIEW_PHOTO_SCREEN_IMAGE_URLS } from "@/lib/screen-assets";
 
 const BG_URL = "/img/background/background2.png";
 const BOARD_URL = "/img/board/board.png";
@@ -257,11 +256,20 @@ export default function ViewPhotoPage() {
 
     try {
       const overlaySnapshot = getPhotoOverlaySnapshot(latestPhoto.id);
+      let rawPhotoDataUrl: string | null = null;
+      for (let attempt = 0; attempt < 5 && !rawPhotoDataUrl; attempt += 1) {
+        rawPhotoDataUrl = await getRawPhoto(latestPhoto.id);
+        if (!rawPhotoDataUrl && attempt < 4) {
+          await new Promise((resolve) => window.setTimeout(resolve, 40));
+        }
+      }
+      // 합성 사진(프레임 baked-in) 대신 raw 사용 — 프레임 이중·잔상 방지
+      const sourcePhotoDataUrl = rawPhotoDataUrl ?? latestPhoto.dataUrl;
       const faceCutouts = await createBunnyShareCutoutDataUrls(
-        latestPhoto.dataUrl,
+        sourcePhotoDataUrl,
         overlaySnapshot,
       );
-      upsertSharedFaces(`${latestPhoto.id}:bunny-v2`, faceCutouts);
+      upsertSharedFaces(latestPhoto.id, faceCutouts);
       setShareModal("success");
     } catch {
       setShareError("공유에 실패했어요. 다시 시도해주세요.");
@@ -274,7 +282,6 @@ export default function ViewPhotoPage() {
   const boardHeight = getBoardHeight(LAYOUT_BASE.boardWidth);
 
   return (
-    <ScreenReadyGate assets={VIEW_PHOTO_SCREEN_IMAGE_URLS}>
     <main className="fixed inset-0 h-[100dvh] w-full overflow-hidden">
       <div
         className="absolute inset-0 bg-cover bg-center"
@@ -382,6 +389,5 @@ export default function ViewPhotoPage() {
         <ShareSuccessModal onClose={() => setShareModal(null)} />
       ) : null}
     </main>
-    </ScreenReadyGate>
   );
 }

@@ -43,3 +43,14 @@ export const VIEW_PHOTO_SCREEN_IMAGE_URLS = [
   "/img/button/카메라 이동.png",
   "/img/button/공유 버튼.png",
 ] as const;
+
+export const SHARE_FACE_SCREEN_IMAGE_URLS = [
+  "/img/background/main-bg.png",
+] as const;
+
+/** 앱 진입 시 한 번에 preload — 화면 마운트 전 디코딩 완료 */
+export const ALL_APP_IMAGE_URLS = [
+  ...HOME_SCREEN_IMAGE_URLS,
+  ...VIEW_PHOTO_SCREEN_IMAGE_URLS,
+  ...SHARE_FACE_SCREEN_IMAGE_URLS,
+] as const;

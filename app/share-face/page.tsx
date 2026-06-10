@@ -204,8 +204,18 @@ export default function ShareFacePage() {
     );
     const nextBubbles: Bubble[] = memoFaces.map((item) => {
       const current = existing.get(item.id);
+      if (current && current.src === item.dataUrl) {
+        return current;
+      }
       if (current) {
-        return { ...current, src: item.dataUrl };
+        return {
+          ...makeBubble(item, width, height),
+          x: current.x,
+          y: current.y,
+          vx: current.vx,
+          vy: current.vy,
+          size: current.size,
+        };
       }
       return makeBubble(item, width, height);
     });
@@ -315,7 +325,7 @@ export default function ShareFacePage() {
         >
           {bubbles.map((bubble) => (
             <img
-              key={bubble.id}
+              key={`${bubble.id}-${bubble.src.length}-${bubble.src.slice(-48)}`}
               src={bubble.src}
               alt="떠다니는 얼굴"
               className="pointer-events-none absolute select-none object-contain"

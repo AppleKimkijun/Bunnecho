@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import ResetStorageOnLoad from "@/components/reset-storage-on-load";
+import { AppReadyProvider } from "@/components/app-ready-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +31,7 @@ export default function RootLayout({
     >
       <body>
         <ResetStorageOnLoad />
-        {children}
+        <AppReadyProvider>{children}</AppReadyProvider>
       </body>
     </html>
   );

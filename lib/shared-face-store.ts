@@ -119,6 +119,12 @@ export function upsertSharedFaces(photoId: string, dataUrls: string[]) {
   const items = listSharedFaces();
   const createdAt = new Date().toISOString();
 
+  // 같은 사진의 이전 공유(구 id 형식 포함)를 모두 교체
+  const filtered = items.filter(
+    (item) =>
+      item.photoId !== photoId && !item.id.startsWith(`${photoId}:`),
+  );
+
   const nextItems = dataUrls.map((dataUrl, index) => ({
     id: `${photoId}:${index}`,
     photoId,
@@ -126,8 +132,6 @@ export function upsertSharedFaces(photoId: string, dataUrls: string[]) {
     createdAt,
   }));
 
-  const nextIds = new Set(nextItems.map((item) => item.id));
-  const filtered = items.filter((item) => !nextIds.has(item.id));
   writeRaw([...filtered, ...nextItems]);
 }
 

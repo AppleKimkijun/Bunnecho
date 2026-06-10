@@ -11,6 +11,14 @@ type ScreenReadyGateProps = {
   placeholderClassName?: string;
 };
 
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
 export function ScreenReadyGate({
   assets,
   children,
@@ -21,35 +29,32 @@ export function ScreenReadyGate({
   useEffect(() => {
     let cancelled = false;
 
-    void preloadImages(assets).then(() => {
-      if (!cancelled) {
-        setReady(true);
-      }
-    });
+    void preloadImages(assets)
+      .then(() => waitForNextPaint())
+      .then(() => {
+        if (!cancelled) {
+          setReady(true);
+        }
+      });
 
     return () => {
       cancelled = true;
     };
   }, [assets]);
 
-  return (
-    <>
+  if (!ready) {
+    return (
       <div
-        className={`fixed inset-0 z-[9999] transition-opacity duration-300 ${placeholderClassName} ${
-          ready ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
-        aria-hidden={ready}
-        aria-busy={!ready}
-        aria-label={ready ? undefined : "화면 준비 중"}
+        className={`fixed inset-0 z-[9999] ${placeholderClassName}`}
+        aria-busy
+        aria-label="화면 준비 중"
       />
-      <div
-        className={`transition-opacity duration-300 ease-out ${
-          ready ? "opacity-100" : "opacity-0"
-        }`}
-        aria-hidden={!ready}
-      >
-        {children}
-      </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="min-h-svh w-full animate-[screen-fade-in_300ms_ease-out_both]">
+      {children}
+    </div>
   );
 }
