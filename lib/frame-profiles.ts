@@ -16,6 +16,8 @@ export type FrameProfile = {
   frameOffsetYFaceRatio: number;
   holeSeedXRatio: number;
   holeSeedYRatio: number;
+  /** 얼굴 구멍 flood fill 하단 한계 (0~1, 프레임 높이 비율) */
+  holeBottomMaxRatio: number;
 };
 
 export const FRAME_PROFILES: FrameProfile[] = [
@@ -32,6 +34,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     frameOffsetYFaceRatio: 0,
     holeSeedXRatio: 0.5,
     holeSeedYRatio: 0.62,
+    holeBottomMaxRatio: 0.9,
   },
   {
     id: "bunny",
@@ -46,6 +49,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     frameOffsetYFaceRatio: 0,
     holeSeedXRatio: 0.5,
     holeSeedYRatio: 0.62,
+    holeBottomMaxRatio: 0.885,
   },
   {
     id: "lop_bunny",
@@ -60,6 +64,7 @@ export const FRAME_PROFILES: FrameProfile[] = [
     frameOffsetYFaceRatio: 0,
     holeSeedXRatio: 0.5,
     holeSeedYRatio: 0.64,
+    holeBottomMaxRatio: 0.885,
   },
   {
     id: "cloud",
@@ -72,9 +77,10 @@ export const FRAME_PROFILES: FrameProfile[] = [
     bottomOffsetFaceRatio: 0.15,
     frameOffsetXFaceRatio: 0,
     frameOffsetYFaceRatio: 0,
-    // 구름 프레임 문(투명 구역) 쪽 시드
-    holeSeedXRatio: 0.72,
-    holeSeedYRatio: 0.66,
+    // PNG 투명 구역(얼굴 창)은 중앙 — 0.72 시드는 작은 틈만 잡음
+    holeSeedXRatio: 0.5,
+    holeSeedYRatio: 0.62,
+    holeBottomMaxRatio: 0.95,
   },
 ];
 

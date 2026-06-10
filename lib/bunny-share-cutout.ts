@@ -6,19 +6,45 @@ import type {
   StoredParticleOverlay,
 } from "@/lib/photo-overlay-store";
 
-const OUTPUT_SIZE = 320;
+const OUTPUT_BASE = 320;
 
 type FrameCropProfile = {
   frameImageSrc: string | null;
   frameScale: number;
+  frameWidthScale: number;
   bottomOffsetFaceRatio: number;
   frameOffsetXFaceRatio: number;
   frameOffsetYFaceRatio: number;
   holeSeedXRatio: number;
   holeSeedYRatio: number;
+  holeBottomMaxRatio: number;
+};
+
+type FrameCropRect = {
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
 };
 
 const ALPHA_THRESHOLD = 16;
+/** flood fill은 완전 투명 픽셀만 통과 (도트 프레임 틈으로 번지는 것 방지) */
+const HOLE_FILL_ALPHA_MAX = 8;
+
+function trimHoleMapBottom(
+  holeMap: Uint8Array,
+  width: number,
+  height: number,
+  maxBottomRatio: number,
+) {
+  const maxY = Math.min(height - 1, Math.floor(height * maxBottomRatio));
+  for (let y = maxY + 1; y < height; y += 1) {
+    const rowStart = y * width;
+    for (let x = 0; x < width; x += 1) {
+      holeMap[rowStart + x] = 0;
+    }
+  }
+}
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -27,6 +53,24 @@ function loadImage(src: string) {
     image.onerror = () => reject(new Error("이미지를 불러올 수 없습니다."));
     image.src = src;
   });
+}
+
+function getOutputSize(cropWidth: number, cropHeight: number) {
+  const safeWidth = Math.max(1, cropWidth);
+  const safeHeight = Math.max(1, cropHeight);
+  const aspect = safeWidth / safeHeight;
+
+  if (aspect >= 1) {
+    return {
+      width: Math.round(OUTPUT_BASE * aspect),
+      height: OUTPUT_BASE,
+    };
+  }
+
+  return {
+    width: OUTPUT_BASE,
+    height: Math.round(OUTPUT_BASE / aspect),
+  };
 }
 
 function findNearestTransparentSeed(
@@ -77,20 +121,22 @@ function findNearestTransparentSeed(
 function createFrameMaskCanvas(
   frameImage: HTMLImageElement,
   profile: FrameCropProfile,
+  outputWidth: number,
+  outputHeight: number,
 ) {
   const sourceCanvas = document.createElement("canvas");
-  sourceCanvas.width = OUTPUT_SIZE;
-  sourceCanvas.height = OUTPUT_SIZE;
+  sourceCanvas.width = outputWidth;
+  sourceCanvas.height = outputHeight;
   const sourceCtx = sourceCanvas.getContext("2d");
   if (!sourceCtx) {
     return null;
   }
 
-  sourceCtx.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-  sourceCtx.drawImage(frameImage, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+  sourceCtx.clearRect(0, 0, outputWidth, outputHeight);
+  sourceCtx.drawImage(frameImage, 0, 0, outputWidth, outputHeight);
 
-  const sourceData = sourceCtx.getImageData(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-  const pixelCount = OUTPUT_SIZE * OUTPUT_SIZE;
+  const sourceData = sourceCtx.getImageData(0, 0, outputWidth, outputHeight);
+  const pixelCount = outputWidth * outputHeight;
   const alphaMap = new Uint8ClampedArray(pixelCount);
   for (let index = 0; index < pixelCount; index += 1) {
     alphaMap[index] = sourceData.data[index * 4 + 3];
@@ -98,14 +144,24 @@ function createFrameMaskCanvas(
 
   const seedX = Math.max(
     0,
-    Math.min(OUTPUT_SIZE - 1, Math.floor(profile.holeSeedXRatio * OUTPUT_SIZE)),
+    Math.min(outputWidth - 1, Math.floor(profile.holeSeedXRatio * outputWidth)),
   );
   const seedY = Math.max(
     0,
-    Math.min(OUTPUT_SIZE - 1, Math.floor(profile.holeSeedYRatio * OUTPUT_SIZE)),
+    Math.min(outputHeight - 1, Math.floor(profile.holeSeedYRatio * outputHeight)),
   );
-  const seed = findNearestTransparentSeed(alphaMap, OUTPUT_SIZE, OUTPUT_SIZE, seedX, seedY);
+  const seed = findNearestTransparentSeed(
+    alphaMap,
+    outputWidth,
+    outputHeight,
+    seedX,
+    seedY,
+  );
   const holeMap = new Uint8Array(pixelCount);
+  const holeBottomMaxY = Math.min(
+    outputHeight - 1,
+    Math.floor(outputHeight * profile.holeBottomMaxRatio),
+  );
 
   if (seed) {
     const queueX = new Int16Array(pixelCount);
@@ -116,7 +172,7 @@ function createFrameMaskCanvas(
     queueX[tail] = seed.x;
     queueY[tail] = seed.y;
     tail += 1;
-    holeMap[seed.y * OUTPUT_SIZE + seed.x] = 1;
+    holeMap[seed.y * outputWidth + seed.x] = 1;
 
     while (head < tail) {
       const x = queueX[head];
@@ -131,14 +187,17 @@ function createFrameMaskCanvas(
       ];
 
       for (const [nx, ny] of neighbors) {
-        if (nx < 0 || ny < 0 || nx >= OUTPUT_SIZE || ny >= OUTPUT_SIZE) {
+        if (nx < 0 || ny < 0 || nx >= outputWidth || ny >= outputHeight) {
           continue;
         }
-        const neighborIndex = ny * OUTPUT_SIZE + nx;
+        if (ny > holeBottomMaxY) {
+          continue;
+        }
+        const neighborIndex = ny * outputWidth + nx;
         if (holeMap[neighborIndex] === 1) {
           continue;
         }
-        if (alphaMap[neighborIndex] > ALPHA_THRESHOLD) {
+        if (alphaMap[neighborIndex] > HOLE_FILL_ALPHA_MAX) {
           continue;
         }
 
@@ -148,22 +207,28 @@ function createFrameMaskCanvas(
         tail += 1;
       }
     }
+
+    trimHoleMapBottom(
+      holeMap,
+      outputWidth,
+      outputHeight,
+      profile.holeBottomMaxRatio,
+    );
   }
 
   const maskCanvas = document.createElement("canvas");
-  maskCanvas.width = OUTPUT_SIZE;
-  maskCanvas.height = OUTPUT_SIZE;
+  maskCanvas.width = outputWidth;
+  maskCanvas.height = outputHeight;
   const maskCtx = maskCanvas.getContext("2d");
   if (!maskCtx) {
     return null;
   }
 
-  const maskData = maskCtx.createImageData(OUTPUT_SIZE, OUTPUT_SIZE);
+  const maskData = maskCtx.createImageData(outputWidth, outputHeight);
   for (let index = 0; index < pixelCount; index += 1) {
     const base = index * 4;
-    const frameVisible = alphaMap[index] > ALPHA_THRESHOLD;
     const holeVisible = holeMap[index] === 1;
-    const alpha = frameVisible || holeVisible ? 255 : 0;
+    const alpha = holeVisible ? 255 : 0;
 
     maskData.data[base] = 255;
     maskData.data[base + 1] = 255;
@@ -172,7 +237,30 @@ function createFrameMaskCanvas(
   }
 
   maskCtx.putImageData(maskData, 0, 0);
-  return maskCanvas;
+
+  const silhouetteData = maskCtx.createImageData(outputWidth, outputHeight);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const base = index * 4;
+    const frameVisible = alphaMap[index] > ALPHA_THRESHOLD;
+    const holeVisible = holeMap[index] === 1;
+    const alpha = frameVisible || holeVisible ? 255 : 0;
+
+    silhouetteData.data[base] = 255;
+    silhouetteData.data[base + 1] = 255;
+    silhouetteData.data[base + 2] = 255;
+    silhouetteData.data[base + 3] = alpha;
+  }
+
+  const silhouetteCanvas = document.createElement("canvas");
+  silhouetteCanvas.width = outputWidth;
+  silhouetteCanvas.height = outputHeight;
+  const silhouetteCtx = silhouetteCanvas.getContext("2d");
+  if (!silhouetteCtx) {
+    return { holeMask: maskCanvas, silhouetteMask: maskCanvas };
+  }
+  silhouetteCtx.putImageData(silhouetteData, 0, 0);
+
+  return { holeMask: maskCanvas, silhouetteMask: silhouetteCanvas };
 }
 
 function drawTintedParticle(
@@ -216,9 +304,9 @@ function drawTintedParticle(
 function drawSavedParticlesOverFrame(
   ctx: CanvasRenderingContext2D,
   photoImage: HTMLImageElement,
-  cropX: number,
-  cropY: number,
-  frameSize: number,
+  crop: FrameCropRect,
+  outputWidth: number,
+  outputHeight: number,
   particles: StoredParticleOverlay[],
   particleImageMap: Map<string, HTMLImageElement>,
 ) {
@@ -227,6 +315,7 @@ function drawSavedParticlesOverFrame(
   }
 
   const sourceMinSize = Math.max(1, Math.min(photoImage.width, photoImage.height));
+  const cropMinSize = Math.max(1, Math.min(crop.cropWidth, crop.cropHeight));
 
   particles.forEach((particle) => {
     const image = particleImageMap.get(particle.imageSrc);
@@ -238,15 +327,15 @@ function drawSavedParticlesOverFrame(
     const sourceY = particle.yRatio * photoImage.height;
     const sourceSize = particle.sizeRatio * sourceMinSize;
 
-    const x = ((sourceX - cropX) / frameSize) * OUTPUT_SIZE;
-    const y = ((sourceY - cropY) / frameSize) * OUTPUT_SIZE;
-    const sizePx = (sourceSize / frameSize) * OUTPUT_SIZE;
+    const x = ((sourceX - crop.cropX) / crop.cropWidth) * outputWidth;
+    const y = ((sourceY - crop.cropY) / crop.cropHeight) * outputHeight;
+    const sizePx = (sourceSize / cropMinSize) * Math.min(outputWidth, outputHeight);
 
     if (
       x < -sizePx ||
       y < -sizePx ||
-      x > OUTPUT_SIZE + sizePx ||
-      y > OUTPUT_SIZE + sizePx
+      x > outputWidth + sizePx ||
+      y > outputHeight + sizePx
     ) {
       return;
     }
@@ -266,106 +355,115 @@ function resolveFrameCrop(
   faceBox: FaceBox,
   image: HTMLImageElement,
   profile: FrameCropProfile,
-) {
-  const frameSize = Math.max(faceBox.width, faceBox.height) * profile.frameScale;
+): FrameCropRect {
+  const cropHeight = Math.max(faceBox.width, faceBox.height) * profile.frameScale;
+  const cropWidth = cropHeight * profile.frameWidthScale;
   let cropX =
     faceBox.x +
     faceBox.width / 2 -
-    frameSize / 2 +
+    cropWidth / 2 +
     faceBox.width * profile.frameOffsetXFaceRatio;
   let cropY =
     faceBox.y +
     faceBox.height -
-    frameSize +
+    cropHeight +
     faceBox.height * profile.bottomOffsetFaceRatio +
     faceBox.height * profile.frameOffsetYFaceRatio;
 
-  cropX = Math.max(0, Math.min(image.width - frameSize, cropX));
-  cropY = Math.max(0, Math.min(image.height - frameSize, cropY));
+  cropX = Math.max(0, Math.min(image.width - cropWidth, cropX));
+  cropY = Math.max(0, Math.min(image.height - cropHeight, cropY));
 
-  return { cropX, cropY, frameSize };
-}
-
-function drawShareCrop(
-  photoImage: HTMLImageElement,
-  cropX: number,
-  cropY: number,
-  frameSize: number,
-  frameImage: HTMLImageElement | null,
-  profile: FrameCropProfile,
-  overlaySnapshot: StoredPhotoOverlaySnapshot | null,
-  particleImageMap: Map<string, HTMLImageElement>,
-) {
-  const canvas = document.createElement("canvas");
-  canvas.width = OUTPUT_SIZE;
-  canvas.height = OUTPUT_SIZE;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("결과 캔버스 초기화 실패");
-  }
-
-  ctx.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-
-  ctx.drawImage(
-    photoImage,
-    cropX,
-    cropY,
-    frameSize,
-    frameSize,
-    0,
-    0,
-    OUTPUT_SIZE,
-    OUTPUT_SIZE,
-  );
-
-  let maskCanvas: HTMLCanvasElement | null = null;
-  if (frameImage) {
-    maskCanvas = createFrameMaskCanvas(frameImage, profile);
-    if (maskCanvas) {
-      ctx.globalCompositeOperation = "destination-in";
-      ctx.drawImage(maskCanvas, 0, 0);
-      ctx.globalCompositeOperation = "source-over";
-    }
-
-    ctx.drawImage(frameImage, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
-
-    if (overlaySnapshot) {
-      drawSavedParticlesOverFrame(
-        ctx,
-        photoImage,
-        cropX,
-        cropY,
-        frameSize,
-        overlaySnapshot.particles,
-        particleImageMap,
-      );
-    }
-
-    if (maskCanvas) {
-      // 최종 단계에서 한 번 더 마스킹해 프레임 바깥 파티클을 제거한다.
-      ctx.globalCompositeOperation = "destination-in";
-      ctx.drawImage(maskCanvas, 0, 0);
-      ctx.globalCompositeOperation = "source-over";
-    }
-  }
-
-  return canvas.toDataURL("image/png");
+  return { cropX, cropY, cropWidth, cropHeight };
 }
 
 function resolveSavedFrameCrop(
   frame: StoredFrameOverlay,
   image: HTMLImageElement,
+): FrameCropRect {
+  const cropWidth = Math.max(1, frame.widthRatio * image.width);
+  const cropHeight = Math.max(1, frame.heightRatio * image.height);
+  const cropX = Math.max(0, Math.min(image.width - cropWidth, frame.xRatio * image.width));
+  const cropY = Math.max(0, Math.min(image.height - cropHeight, frame.yRatio * image.height));
+
+  return { cropX, cropY, cropWidth, cropHeight };
+}
+
+function drawShareCrop(
+  photoImage: HTMLImageElement,
+  crop: FrameCropRect,
+  frameImage: HTMLImageElement | null,
+  profile: FrameCropProfile,
+  overlaySnapshot: StoredPhotoOverlaySnapshot | null,
+  particleImageMap: Map<string, HTMLImageElement>,
 ) {
-  const cropX = frame.xRatio * image.width;
-  const cropY = frame.yRatio * image.height;
-  const cropWidth = frame.widthRatio * image.width;
-  const cropHeight = frame.heightRatio * image.height;
+  const { width: outputWidth, height: outputHeight } = getOutputSize(
+    crop.cropWidth,
+    crop.cropHeight,
+  );
 
-  const frameSize = Math.max(1, Math.max(cropWidth, cropHeight));
-  const x = Math.max(0, Math.min(image.width - frameSize, cropX));
-  const y = Math.max(0, Math.min(image.height - frameSize, cropY));
+  const canvas = document.createElement("canvas");
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("결과 캔버스 초기화 실패");
+  }
 
-  return { cropX: x, cropY: y, frameSize };
+  ctx.clearRect(0, 0, outputWidth, outputHeight);
+
+  ctx.drawImage(
+    photoImage,
+    crop.cropX,
+    crop.cropY,
+    crop.cropWidth,
+    crop.cropHeight,
+    0,
+    0,
+    outputWidth,
+    outputHeight,
+  );
+
+  let holeMaskCanvas: HTMLCanvasElement | null = null;
+  let silhouetteMaskCanvas: HTMLCanvasElement | null = null;
+  if (frameImage) {
+    const masks = createFrameMaskCanvas(
+      frameImage,
+      profile,
+      outputWidth,
+      outputHeight,
+    );
+    if (masks) {
+      holeMaskCanvas = masks.holeMask;
+      silhouetteMaskCanvas = masks.silhouetteMask;
+    }
+    if (holeMaskCanvas) {
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.drawImage(holeMaskCanvas, 0, 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+
+    ctx.drawImage(frameImage, 0, 0, outputWidth, outputHeight);
+
+    if (overlaySnapshot) {
+      drawSavedParticlesOverFrame(
+        ctx,
+        photoImage,
+        crop,
+        outputWidth,
+        outputHeight,
+        overlaySnapshot.particles,
+        particleImageMap,
+      );
+    }
+
+    if (silhouetteMaskCanvas) {
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.drawImage(silhouetteMaskCanvas, 0, 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  }
+
+  return canvas.toDataURL("image/png");
 }
 
 export async function createBunnyShareCutoutDataUrls(
@@ -376,11 +474,13 @@ export async function createBunnyShareCutoutDataUrls(
   const cropProfile: FrameCropProfile = {
     frameImageSrc: selectedProfile.frameImageSrc,
     frameScale: selectedProfile.frameScale,
+    frameWidthScale: selectedProfile.frameWidthScale,
     bottomOffsetFaceRatio: selectedProfile.bottomOffsetFaceRatio,
     frameOffsetXFaceRatio: selectedProfile.frameOffsetXFaceRatio,
     frameOffsetYFaceRatio: selectedProfile.frameOffsetYFaceRatio,
     holeSeedXRatio: selectedProfile.holeSeedXRatio,
     holeSeedYRatio: selectedProfile.holeSeedYRatio,
+    holeBottomMaxRatio: selectedProfile.holeBottomMaxRatio,
   };
 
   const photoImage = await loadImage(photoDataUrl);
@@ -403,19 +503,16 @@ export async function createBunnyShareCutoutDataUrls(
 
   const savedFrames = overlaySnapshot?.frames ?? [];
   if (savedFrames.length > 0) {
-    return savedFrames.map((frame) => {
-      const { cropX, cropY, frameSize } = resolveSavedFrameCrop(frame, photoImage);
-      return drawShareCrop(
+    return savedFrames.map((frame) =>
+      drawShareCrop(
         photoImage,
-        cropX,
-        cropY,
-        frameSize,
+        resolveSavedFrameCrop(frame, photoImage),
         frameImage,
         cropProfile,
         overlaySnapshot,
         particleImageMap,
-      );
-    });
+      ),
+    );
   }
 
   const detectedFaces = await detectFacesInImage(photoImage);
@@ -437,22 +534,14 @@ export async function createBunnyShareCutoutDataUrls(
           .slice(0, 8)
       : [fallback];
 
-  return faceBoxes.map((faceBox) => {
-    const { cropX, cropY, frameSize } = resolveFrameCrop(
-      faceBox,
+  return faceBoxes.map((faceBox) =>
+    drawShareCrop(
       photoImage,
-      cropProfile,
-    );
-    return drawShareCrop(
-      photoImage,
-      cropX,
-      cropY,
-      frameSize,
+      resolveFrameCrop(faceBox, photoImage, cropProfile),
       frameImage,
       cropProfile,
       overlaySnapshot,
       particleImageMap,
-    );
-  });
+    ),
+  );
 }
-

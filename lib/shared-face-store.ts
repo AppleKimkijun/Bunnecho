@@ -135,6 +135,11 @@ export function clearSharedFaces() {
   writeRaw([]);
 }
 
+export function removeSharedFace(id: string) {
+  const items = listSharedFaces();
+  writeRaw(items.filter((item) => item.id !== id));
+}
+
 export function subscribeSharedFaces(listener: () => void) {
   if (!canUseStorage()) {
     return () => {};

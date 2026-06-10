@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import {
   getSharedFacesServerSnapshot,
   listSharedFaces,
+  removeSharedFace,
   subscribeSharedFaces,
   type SharedFaceItem,
 } from "@/lib/shared-face-store";
@@ -262,6 +263,21 @@ export default function ShareFacePage() {
     };
   }, [memoFaces.length]);
 
+  const handleRemoveHoveredBubble = () => {
+    if (!hoveredBubbleId) {
+      return;
+    }
+
+    removeSharedFace(hoveredBubbleId);
+    bubblesRef.current = bubblesRef.current.filter(
+      (bubble) => bubble.id !== hoveredBubbleId,
+    );
+    setBubbles((current) =>
+      current.filter((bubble) => bubble.id !== hoveredBubbleId),
+    );
+    setHoveredBubbleId(null);
+  };
+
   return (
     <main
       ref={containerRef}
@@ -302,7 +318,7 @@ export default function ShareFacePage() {
               key={bubble.id}
               src={bubble.src}
               alt="떠다니는 얼굴"
-              className="pointer-events-none absolute select-none"
+              className="pointer-events-none absolute select-none object-contain"
               style={{
                 width: `${bubble.size}px`,
                 height: `${bubble.size}px`,
@@ -313,16 +329,19 @@ export default function ShareFacePage() {
           ))}
 
           {hoveredBubble ? (
-            <div
-              className="pointer-events-none absolute z-20 drop-shadow-[0_3px_6px_rgba(239,79,115,0.35)]"
+            <button
+              type="button"
+              aria-label="얼굴 삭제"
+              className="absolute z-20 cursor-pointer border-0 bg-transparent p-0 drop-shadow-[0_3px_6px_rgba(239,79,115,0.35)]"
               style={{
                 left: hoveredBubble.x + hoveredBubble.size / 2,
                 top: hoveredBubble.y + hoveredBubble.size / 2,
                 transform: `translate(-50%, -50%) rotate(${hoveredBubbleRotation}deg)`,
               }}
+              onClick={handleRemoveHoveredBubble}
             >
               <PencilXMark size={hoveredBubble.size * 1.28} />
-            </div>
+            </button>
           ) : null}
         </div>
       )}
