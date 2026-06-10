@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createBunnyShareCutoutDataUrls } from "@/lib/bunny-share-cutout";
 import {
   getPhotosServerSnapshot,
@@ -98,50 +98,120 @@ function useViewPhotoScale(isStacked: boolean) {
   return scale;
 }
 
-function ShareSuccessModal({ onClose }: { onClose: () => void }) {
+const IMAGE_BUTTON_CLASS =
+  "block w-full cursor-pointer transition-transform duration-200 ease-out hover:scale-[1.1] hover:-translate-y-1 active:scale-[0.96] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100 disabled:hover:translate-y-0";
+
+function ShareModalShell({
+  children,
+  onClose,
+  labelledBy,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  labelledBy: string;
+}) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-sky-200/45 p-4 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-sky-200/40 p-4 backdrop-blur-[2px]"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="relative w-full max-w-sm animate-[pop-in_0.35s_ease-out] rounded-[2rem] border-4 border-white bg-gradient-to-b from-[#fff7fb] to-[#f3ecff] px-6 py-8 text-center shadow-[0_20px_50px_rgba(167,139,250,0.35)]"
+        className="relative w-full max-w-sm animate-[pop-in_0.35s_ease-out] overflow-hidden rounded-[1.75rem] border-2 border-white/90 bg-gradient-to-b from-[#fffefb] to-[#f7f2ea] px-6 py-7 shadow-[0_18px_48px_rgba(147,197,253,0.28)]"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="share-success-title"
+        aria-labelledby={labelledBy}
       >
-        <div className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-white px-4 py-1 text-lg shadow-sm">
-          ✨
-        </div>
-
-        <p
-          id="share-success-title"
-          className="font-luxurious-script text-3xl leading-tight text-violet-700 md:text-4xl"
-        >
-          Shared!
-        </p>
-
-        <p className="mt-4 text-base leading-relaxed font-medium text-neutral-700 md:text-lg">
-          공유 화면에 공유 되었습니다!
-          <br />
-          지금 바로 확인해 보세요!
-        </p>
-
-        <Link
-          href="/"
-          className="mt-7 inline-flex w-full items-center justify-center rounded-full border-2 border-white bg-gradient-to-r from-[#ffd6e8] via-[#ffe9a8] to-[#c9b6ff] px-6 py-3.5 text-base font-bold tracking-tight text-violet-800 shadow-[0_6px_0_#d8b4fe,0_10px_24px_rgba(192,132,252,0.35)] transition hover:translate-y-0.5 hover:shadow-[0_4px_0_#d8b4fe,0_8px_20px_rgba(192,132,252,0.3)] active:translate-y-1 active:shadow-[0_2px_0_#d8b4fe]"
-        >
-          카메라로 돌아가기 🐰
-        </Link>
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-200/80 via-pink-200/70 to-violet-200/80"
+          aria-hidden
+        />
+        {children}
       </div>
     </div>
   );
 }
 
+function ShareConfirmModal({
+  onConfirm,
+  onCancel,
+  isSharing,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSharing: boolean;
+}) {
+  return (
+    <ShareModalShell onClose={onCancel} labelledBy="share-confirm-title">
+      <p className="font-luxurious-script text-center text-3xl leading-none text-violet-600/90">
+        Share
+      </p>
+
+      <p
+        id="share-confirm-title"
+        className="mt-4 text-center text-base leading-relaxed font-medium text-neutral-700"
+      >
+        공유 화면에 사진을 띄우시겠습니까?
+      </p>
+      <p className="mt-2 text-center text-sm leading-relaxed text-neutral-500">
+        촬영한 얼굴이 공유 화면에 올라갑니다.
+      </p>
+
+      <div className="mt-7 flex gap-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSharing}
+          className="flex-1 cursor-pointer rounded-full border border-sky-200/90 bg-white/90 px-4 py-3 text-sm font-medium text-sky-900/80 transition hover:border-sky-300 hover:bg-sky-50/80 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={isSharing}
+          className="flex-1 cursor-pointer rounded-full border border-white/80 bg-gradient-to-r from-sky-200/90 via-pink-200/85 to-violet-200/90 px-4 py-3 text-sm font-medium text-violet-900/90 shadow-[0_4px_14px_rgba(192,132,252,0.18)] transition hover:brightness-[1.03] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isSharing ? "공유 중..." : "공유하기"}
+        </button>
+      </div>
+    </ShareModalShell>
+  );
+}
+
+function ShareSuccessModal({ onClose }: { onClose: () => void }) {
+  return (
+    <ShareModalShell onClose={onClose} labelledBy="share-success-title">
+      <p className="font-luxurious-script text-center text-3xl leading-none text-violet-600/90">
+        Done
+      </p>
+
+      <p
+        id="share-success-title"
+        className="mt-4 text-center text-base leading-relaxed font-medium text-neutral-700"
+      >
+        공유 되었습니다
+      </p>
+      <p className="mt-2 text-center text-sm leading-relaxed text-neutral-500">
+        공유 화면에서 확인할 수 있어요.
+      </p>
+
+      <button
+        type="button"
+        onClick={onClose}
+        className="mt-7 inline-flex w-full cursor-pointer items-center justify-center rounded-full border border-white/80 bg-gradient-to-r from-sky-200/90 via-pink-200/85 to-violet-200/90 px-4 py-3 text-sm font-medium text-violet-900/90 shadow-[0_4px_14px_rgba(192,132,252,0.18)] transition hover:brightness-[1.03]"
+      >
+        확인
+      </button>
+    </ShareModalShell>
+  );
+}
+
 export default function ViewPhotoPage() {
-  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareModal, setShareModal] = useState<"confirm" | "success" | null>(
+    null,
+  );
   const [shareError, setShareError] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [isStacked, setIsStacked] = useState(false);
@@ -168,7 +238,16 @@ export default function ViewPhotoPage() {
     };
   }, []);
 
-  const handleShare = async () => {
+  const handleShareClick = () => {
+    if (!latestPhoto || isSharing) {
+      return;
+    }
+
+    setShareError(null);
+    setShareModal("confirm");
+  };
+
+  const handleShareConfirm = async () => {
     if (!latestPhoto || isSharing) {
       return;
     }
@@ -183,9 +262,10 @@ export default function ViewPhotoPage() {
         overlaySnapshot,
       );
       upsertSharedFaces(`${latestPhoto.id}:bunny-v2`, faceCutouts);
-      setShowShareModal(true);
+      setShareModal("success");
     } catch {
       setShareError("공유에 실패했어요. 다시 시도해주세요.");
+      setShareModal(null);
     } finally {
       setIsSharing(false);
     }
@@ -258,10 +338,7 @@ export default function ViewPhotoPage() {
               gap: isStacked ? 16 : 20,
             }}
           >
-            <Link
-              href="/"
-              className="block w-full transition hover:scale-[1.02] active:scale-[0.98]"
-            >
+            <Link href="/" className={IMAGE_BUTTON_CLASS}>
               <img
                 src={CAMERA_BUTTON_URL}
                 alt="Back to Camera"
@@ -272,9 +349,9 @@ export default function ViewPhotoPage() {
 
             <button
               type="button"
-              onClick={handleShare}
+              onClick={handleShareClick}
               disabled={!latestPhoto || isSharing}
-              className="block w-full transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+              className={IMAGE_BUTTON_CLASS}
             >
               <img
                 src={SHARE_BUTTON_URL}
@@ -293,8 +370,16 @@ export default function ViewPhotoPage() {
         </div>
       </div>
 
-      {showShareModal ? (
-        <ShareSuccessModal onClose={() => setShowShareModal(false)} />
+      {shareModal === "confirm" ? (
+        <ShareConfirmModal
+          onConfirm={handleShareConfirm}
+          onCancel={() => setShareModal(null)}
+          isSharing={isSharing}
+        />
+      ) : null}
+
+      {shareModal === "success" ? (
+        <ShareSuccessModal onClose={() => setShareModal(null)} />
       ) : null}
     </main>
     </ScreenReadyGate>
