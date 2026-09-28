@@ -310,17 +310,30 @@ export default function ViewPhotoPage() {
               draggable={false}
             />
 
-            <img
-              src={BOARD_LOGO_URL}
-              alt="Bunnecho"
-              className="pointer-events-none absolute h-auto select-none"
+            <button
+              type="button"
+              aria-label="Share Face"
+              onClick={() =>
+                window.open(
+                  "/share-face",
+                  "share-face",
+                  "popup=yes,width=1280,height=800,noopener,noreferrer",
+                )
+              }
+              className={`absolute h-auto ${IMAGE_BUTTON_CLASS}`}
               style={{
                 left: BOARD_LOGO_AREA.left,
                 top: BOARD_LOGO_AREA.top,
                 width: BOARD_LOGO_AREA.width,
               }}
-              draggable={false}
-            />
+            >
+              <img
+                src={BOARD_LOGO_URL}
+                alt=""
+                className="h-auto w-full select-none"
+                draggable={false}
+              />
+            </button>
 
             <div
               className="absolute flex items-center justify-center "

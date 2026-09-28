@@ -230,10 +230,10 @@ const FRAME_GRID_SLOTS: Array<{
   thumbSrc: string | null;
   label?: string;
 }> = [
-  { filterId: "plain", thumbSrc: null, label: "default" },
-  { filterId: "lop_bunny", thumbSrc: "/img/frame/lop_bunny.png" },
   { filterId: "bunny", thumbSrc: "/img/frame/bunny.png" },
+  { filterId: "lop_bunny", thumbSrc: "/img/frame/lop_bunny.png" },
   { filterId: "cloud", thumbSrc: "/img/frame/3_구름.png" },
+  { filterId: null, thumbSrc: null },
   { filterId: null, thumbSrc: null },
   { filterId: null, thumbSrc: null },
   { filterId: null, thumbSrc: null },
@@ -474,7 +474,7 @@ export default function Home() {
   >("checking");
   const [message, setMessage] = useState("카메라 권한을 확인하는 중입니다.");
   const [selectedFilterId, setSelectedFilterId] = useState<FrameVariantId | null>(
-    "plain",
+    "bunny",
   );
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
   const [capturePhase, setCapturePhase] = useState<"idle" | "freeze" | "slide">(

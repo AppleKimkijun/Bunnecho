@@ -3,11 +3,16 @@
 import { clearPhotoOverlaySnapshots } from "@/lib/photo-overlay-store";
 import { clearPhotos } from "@/lib/photo-store";
 import { clearSharedFaces } from "@/lib/shared-face-store";
+import { shouldResetStorage } from "@/lib/storage-reset";
 
 let clearedOnBoot = false;
 
 function resetAllStorageOnce() {
-  if (clearedOnBoot || typeof window === "undefined") {
+  if (
+    clearedOnBoot ||
+    typeof window === "undefined" ||
+    !shouldResetStorage(window.location.pathname)
+  ) {
     return;
   }
 
