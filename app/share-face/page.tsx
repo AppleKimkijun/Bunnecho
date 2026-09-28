@@ -294,7 +294,7 @@ export default function ShareFacePage() {
       className="relative min-h-svh w-full overflow-hidden"
     >
       <div
-        className="absolute inset-0 bg-cover bg-center"
+        className="absolute inset-0 bg-contain bg-center bg-no-repeat"
         style={{ backgroundImage: `url(${BG_URL})` }}
       />
 
