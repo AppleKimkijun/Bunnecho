@@ -21,6 +21,7 @@ import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 import { PARTICLE_COLOR_PALETTE } from "@/lib/particle-colors";
 import { upsertPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
+import { selectFrame } from "@/lib/frame-selection";
 import {
   FRAME_PROFILES,
   type FrameVariantId,
@@ -618,7 +619,7 @@ export default function Home() {
   }, []);
 
   const toggleFilterSelection = useCallback((filterId: FrameVariantId) => {
-    setSelectedFilterId((prev) => (prev === filterId ? null : filterId));
+    setSelectedFilterId((prev) => selectFrame(prev, filterId));
   }, []);
 
   const updateWindowLayout = useCallback(

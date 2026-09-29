@@ -10,6 +10,13 @@ import {
 } from "react";
 import { PencilXMark } from "@/components/pencil-x-mark";
 import { Button } from "@/components/ui/button";
+import { getShareFaceBubbleSize } from "@/lib/share-face-size";
+import {
+  getVisibleBounds,
+  makeAlphaShape,
+  visiblePixelsOverlap,
+  type AlphaShape,
+} from "@/lib/share-face-collision";
 import {
   getSharedFacesServerSnapshot,
   listSharedFaces,
@@ -19,9 +26,6 @@ import {
 } from "@/lib/shared-face-store";
 
 const BG_URL = "/img/background/share-face-bg.gif";
-// 버블끼리 충돌만 사용 (PNG 투명 여백 보정). 벽 튕김은 이미지 박스 전체 기준.
-const BUBBLE_HIT_DIAMETER_RATIO = .9;
-
 type Bubble = {
   id: string;
   src: string;
@@ -31,6 +35,15 @@ type Bubble = {
   vy: number;
   size: number;
 };
+
+type CachedShape = { src: string; shape: AlphaShape };
+
+function getActiveShapes(bubbles: Bubble[], cache: Map<string, CachedShape>) {
+  return new Map(bubbles.flatMap((bubble) => {
+    const cached = cache.get(bubble.id);
+    return cached?.src === bubble.src ? [[bubble.id, cached.shape] as const] : [];
+  }));
+}
 
 function hashToUnit(seed: string) {
   let hash = 2166136261;
@@ -54,7 +67,8 @@ function makeBubble(
   width: number,
   height: number,
 ): Bubble {
-  const size = seedRange(`${item.id}-size`, 190, 260);
+  const baseSize = seedRange(`${item.id}-size`, 165, 210);
+  const size = getShareFaceBubbleSize(baseSize, item.frameIndices?.length ?? 1, width, height);
   const maxX = Math.max(width - size, 1);
   const maxY = Math.max(height - size, 1);
 
@@ -69,10 +83,6 @@ function makeBubble(
   };
 }
 
-function getBubbleHitRadius(size: number) {
-  return (size * BUBBLE_HIT_DIAMETER_RATIO) / 2;
-}
-
 function getBubbleCenter(bubble: Bubble) {
   return {
     cx: bubble.x + bubble.size / 2,
@@ -80,58 +90,68 @@ function getBubbleCenter(bubble: Bubble) {
   };
 }
 
-function clampBubbleToBounds(bubble: Bubble, width: number, height: number) {
-  bubble.x = Math.max(0, Math.min(width - bubble.size, bubble.x));
-  bubble.y = Math.max(0, Math.min(height - bubble.size, bubble.y));
+function clampBubbleToBounds(bubble: Bubble, width: number, height: number, shape?: AlphaShape) {
+  const bounds = shape ? getVisibleBounds(bubble, shape) : {
+    left: bubble.x, top: bubble.y, right: bubble.x + bubble.size, bottom: bubble.y + bubble.size,
+  };
+  bubble.x += Math.max(0, -bounds.left) - Math.max(0, bounds.right - width);
+  bubble.y += Math.max(0, -bounds.top) - Math.max(0, bounds.bottom - height);
 }
 
-function bounceBubbleOffWalls(bubble: Bubble, width: number, height: number) {
-  if (bubble.x <= 0) {
-    bubble.x = 0;
+function bounceBubbleOffWalls(bubble: Bubble, width: number, height: number, shape: AlphaShape) {
+  const bounds = getVisibleBounds(bubble, shape);
+  if (bounds.left <= 0) {
+    bubble.x -= bounds.left;
     bubble.vx = Math.abs(bubble.vx);
-  } else if (bubble.x + bubble.size >= width) {
-    bubble.x = Math.max(0, width - bubble.size);
+  } else if (bounds.right >= width) {
+    bubble.x += width - bounds.right;
     bubble.vx = -Math.abs(bubble.vx);
   }
 
-  if (bubble.y <= 0) {
-    bubble.y = 0;
+  if (bounds.top <= 0) {
+    bubble.y -= bounds.top;
     bubble.vy = Math.abs(bubble.vy);
-  } else if (bubble.y + bubble.size >= height) {
-    bubble.y = Math.max(0, height - bubble.size);
+  } else if (bounds.bottom >= height) {
+    bubble.y += height - bounds.bottom;
     bubble.vy = -Math.abs(bubble.vy);
   }
 }
 
-/** 보이는 프레임 크기(원) 기준으로 충돌·튕김 */
-function resolveBubblePairCollisions(bubbles: Bubble[]) {
+function resolveBubblePairCollisions(bubbles: Bubble[], shapes: Map<string, AlphaShape>) {
   for (let i = 0; i < bubbles.length; i += 1) {
     for (let j = i + 1; j < bubbles.length; j += 1) {
       const a = bubbles[i];
       const b = bubbles[j];
+      const aShape = shapes.get(a.id);
+      const bShape = shapes.get(b.id);
+      if (!aShape || !bShape || !visiblePixelsOverlap(a, aShape, b, bShape)) continue;
 
-      const aCenter = getBubbleCenter(a);
-      const bCenter = getBubbleCenter(b);
-      const ra = getBubbleHitRadius(a.size);
-      const rb = getBubbleHitRadius(b.size);
-
-      let dx = bCenter.cx - aCenter.cx;
-      let dy = bCenter.cy - aCenter.cy;
-      const dist = Math.hypot(dx, dy) || 0.001;
-      const minDist = ra + rb;
-
-      if (dist >= minDist) {
-        continue;
+      const aBounds = getVisibleBounds(a, aShape);
+      const bBounds = getVisibleBounds(b, bShape);
+      const dx = (bBounds.left + bBounds.right - aBounds.left - aBounds.right) / 2;
+      const dy = (bBounds.top + bBounds.bottom - aBounds.top - aBounds.bottom) / 2;
+      const distance = Math.hypot(dx, dy) || 1;
+      const nx = dx / distance || 1;
+      const ny = dy / distance;
+      const startAX = a.x;
+      const startAY = a.y;
+      const startBX = b.x;
+      const startBY = b.y;
+      let low = 0;
+      let high = Math.max(a.size, b.size) * 2;
+      for (let step = 0; step < 10; step += 1) {
+        const offset = (low + high) / 2;
+        a.x = startAX - nx * offset / 2;
+        a.y = startAY - ny * offset / 2;
+        b.x = startBX + nx * offset / 2;
+        b.y = startBY + ny * offset / 2;
+        if (visiblePixelsOverlap(a, aShape, b, bShape)) low = offset;
+        else high = offset;
       }
-
-      const overlap = minDist - dist;
-      const nx = dx / dist;
-      const ny = dy / dist;
-
-      a.x -= (nx * overlap) / 2;
-      a.y -= (ny * overlap) / 2;
-      b.x += (nx * overlap) / 2;
-      b.y += (ny * overlap) / 2;
+      a.x = startAX - nx * (high + 1) / 2;
+      a.y = startAY - ny * (high + 1) / 2;
+      b.x = startBX + nx * (high + 1) / 2;
+      b.y = startBY + ny * (high + 1) / 2;
 
       const dvx = b.vx - a.vx;
       const dvy = b.vy - a.vy;
@@ -156,6 +176,8 @@ export default function ShareFacePage() {
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bubblesRef = useRef<Bubble[]>([]);
+  const shapesRef = useRef<Map<string, CachedShape>>(new Map());
+  const [shapeVersion, setShapeVersion] = useState(0);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [hoveredBubbleId, setHoveredBubbleId] = useState<string | null>(null);
 
@@ -196,6 +218,32 @@ export default function ShareFacePage() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    void Promise.all(memoFaces.map(async (item): Promise<[string, CachedShape]> => {
+      const cached = shapesRef.current.get(item.id);
+      if (cached?.src === item.dataUrl) return [item.id, cached];
+
+      const image = new Image();
+      image.src = item.dataUrl;
+      await image.decode();
+      const scale = Math.min(1, 384 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("공유 이미지의 투명 영역을 읽을 수 없습니다.");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      return [item.id, { src: item.dataUrl, shape: makeAlphaShape(canvas.width, canvas.height, rgba) }];
+    })).then((entries) => {
+      if (cancelled) return;
+      shapesRef.current = new Map(entries);
+      setShapeVersion((version) => version + 1);
+    }).catch((error) => console.error("공유 이미지 충돌 영역을 읽지 못했습니다.", error));
+    return () => { cancelled = true; };
+  }, [memoFaces]);
+
+  useEffect(() => {
     const width = containerRef.current?.clientWidth ?? window.innerWidth;
     const height = containerRef.current?.clientHeight ?? window.innerHeight;
 
@@ -220,15 +268,44 @@ export default function ShareFacePage() {
       return makeBubble(item, width, height);
     });
 
+    const shapes = getActiveShapes(nextBubbles, shapesRef.current);
     for (let pass = 0; pass < 6; pass += 1) {
-      resolveBubblePairCollisions(nextBubbles);
+      resolveBubblePairCollisions(nextBubbles, shapes);
       nextBubbles.forEach((bubble) =>
-        clampBubbleToBounds(bubble, width, height),
+        clampBubbleToBounds(bubble, width, height, shapes.get(bubble.id)),
       );
     }
 
     bubblesRef.current = nextBubbles;
     setBubbles(nextBubbles.map((bubble) => ({ ...bubble })));
+  }, [memoFaces]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      const { clientWidth: width, clientHeight: height } = container;
+      const facesById = new Map(memoFaces.map((item) => [item.id, item]));
+      bubblesRef.current = bubblesRef.current.map((bubble) => {
+        const item = facesById.get(bubble.id);
+        if (!item) return bubble;
+        const resized = {
+          ...bubble,
+          size: getShareFaceBubbleSize(
+            seedRange(`${item.id}-size`, 165, 210),
+            item.frameIndices?.length ?? 1,
+            width,
+            height,
+          ),
+        };
+        clampBubbleToBounds(resized, width, height, shapesRef.current.get(bubble.id)?.shape);
+        return resized;
+      });
+      setBubbles(bubblesRef.current.map((bubble) => ({ ...bubble })));
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
   }, [memoFaces]);
 
   useEffect(() => {
@@ -247,17 +324,20 @@ export default function ShareFacePage() {
         x: bubble.x + bubble.vx,
         y: bubble.y + bubble.vy,
       }));
+      const shapes = getActiveShapes(next, shapesRef.current);
 
       for (const bubble of next) {
-        bounceBubbleOffWalls(bubble, width, height);
+        const shape = shapes.get(bubble.id);
+        if (shape) bounceBubbleOffWalls(bubble, width, height, shape);
       }
 
       for (let pass = 0; pass < 3; pass += 1) {
-        resolveBubblePairCollisions(next);
+        resolveBubblePairCollisions(next, shapes);
       }
 
       for (const bubble of next) {
-        bounceBubbleOffWalls(bubble, width, height);
+        const shape = shapes.get(bubble.id);
+        if (shape) bounceBubbleOffWalls(bubble, width, height, shape);
       }
 
       bubblesRef.current = next;
@@ -271,7 +351,7 @@ export default function ShareFacePage() {
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [memoFaces.length]);
+  }, [memoFaces.length, shapeVersion]);
 
   const handleRemoveHoveredBubble = () => {
     if (!hoveredBubbleId) {

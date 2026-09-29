@@ -10,7 +10,10 @@ import {
 } from "@/lib/photo-store";
 import { getPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
 import { getRawPhoto } from "@/lib/photo-raw-store";
-import { upsertSharedFaces } from "@/lib/shared-face-store";
+import {
+  upsertSharedFaces,
+  wasPhotoShared,
+} from "@/lib/shared-face-store";
 import { PolaroidPhoto } from "@/components/polaroid-photo";
 
 const BG_URL = "/img/background/background2.png";
@@ -136,10 +139,12 @@ function ShareConfirmModal({
   onConfirm,
   onCancel,
   isSharing,
+  alreadyShared,
 }: {
   onConfirm: () => void;
   onCancel: () => void;
   isSharing: boolean;
+  alreadyShared: boolean;
 }) {
   return (
     <ShareModalShell onClose={onCancel} labelledBy="share-confirm-title">
@@ -151,10 +156,14 @@ function ShareConfirmModal({
         id="share-confirm-title"
         className="mt-4 text-center text-base leading-relaxed font-medium text-neutral-700"
       >
-        공유 화면에 사진을 띄우시겠습니까?
+        {alreadyShared
+          ? "이미 공유한 사진입니다. 다시 공유하시겠습니까?"
+          : "공유 화면에 사진을 띄우시겠습니까?"}
       </p>
       <p className="mt-2 text-center text-sm leading-relaxed text-neutral-500">
-        촬영한 얼굴이 공유 화면에 올라갑니다.
+        {alreadyShared
+          ? "X로 삭제한 컷아웃도 다시 공유됩니다."
+          : "촬영한 얼굴이 공유 화면에 올라갑니다."}
       </p>
 
       <div className="mt-7 flex gap-3">
@@ -172,7 +181,7 @@ function ShareConfirmModal({
           disabled={isSharing}
           className="flex-1 cursor-pointer rounded-full border border-white/80 bg-gradient-to-r from-sky-200/90 via-pink-200/85 to-violet-200/90 px-4 py-3 text-sm font-medium text-violet-900/90 shadow-[0_4px_14px_rgba(192,132,252,0.18)] transition hover:brightness-[1.03] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSharing ? "공유 중..." : "공유하기"}
+          {isSharing ? "공유 중..." : alreadyShared ? "다시 공유하기" : "공유하기"}
         </button>
       </div>
     </ShareModalShell>
@@ -213,6 +222,7 @@ export default function ViewPhotoPage() {
   );
   const [shareError, setShareError] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [alreadyShared, setAlreadyShared] = useState(false);
   const [isStacked, setIsStacked] = useState(false);
   const scale = useViewPhotoScale(isStacked);
 
@@ -243,6 +253,7 @@ export default function ViewPhotoPage() {
     }
 
     setShareError(null);
+    setAlreadyShared(wasPhotoShared(latestPhoto.id));
     setShareModal("confirm");
   };
 
@@ -256,20 +267,28 @@ export default function ViewPhotoPage() {
 
     try {
       const overlaySnapshot = getPhotoOverlaySnapshot(latestPhoto.id);
-      let rawPhotoDataUrl: string | null = null;
-      for (let attempt = 0; attempt < 5 && !rawPhotoDataUrl; attempt += 1) {
-        rawPhotoDataUrl = await getRawPhoto(latestPhoto.id);
-        if (!rawPhotoDataUrl && attempt < 4) {
-          await new Promise((resolve) => window.setTimeout(resolve, 40));
+      const useSavedComposite = Boolean(overlaySnapshot?.frames.length);
+      let sourcePhotoDataUrl = latestPhoto.dataUrl;
+      if (!useSavedComposite) {
+        let rawPhotoDataUrl: string | null = null;
+        for (let attempt = 0; attempt < 5 && !rawPhotoDataUrl; attempt += 1) {
+          rawPhotoDataUrl = await getRawPhoto(latestPhoto.id);
+          if (!rawPhotoDataUrl && attempt < 4) {
+            await new Promise((resolve) => window.setTimeout(resolve, 40));
+          }
         }
+        sourcePhotoDataUrl = rawPhotoDataUrl ?? latestPhoto.dataUrl;
       }
-      // 합성 사진(프레임 baked-in) 대신 raw 사용 — 프레임 이중·잔상 방지
-      const sourcePhotoDataUrl = rawPhotoDataUrl ?? latestPhoto.dataUrl;
       const faceCutouts = await createBunnyShareCutoutDataUrls(
         sourcePhotoDataUrl,
         overlaySnapshot,
+        useSavedComposite,
       );
-      upsertSharedFaces(latestPhoto.id, faceCutouts);
+      if (upsertSharedFaces(latestPhoto.id, faceCutouts) === 0) {
+        setShareError("공유할 컷아웃이 없어요.");
+        setShareModal(null);
+        return;
+      }
       setShareModal("success");
     } catch {
       setShareError("공유에 실패했어요. 다시 시도해주세요.");
@@ -395,6 +414,7 @@ export default function ViewPhotoPage() {
           onConfirm={handleShareConfirm}
           onCancel={() => setShareModal(null)}
           isSharing={isSharing}
+          alreadyShared={alreadyShared}
         />
       ) : null}
 

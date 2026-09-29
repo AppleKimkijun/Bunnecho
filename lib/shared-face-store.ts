@@ -3,9 +3,16 @@ export type SharedFaceItem = {
   photoId: string;
   dataUrl: string;
   createdAt: string;
+  frameIndices?: number[];
+};
+
+export type SharedFaceCutout = {
+  dataUrl: string;
+  frameIndices: number[];
 };
 
 const STORAGE_KEY = "bunnecho-shared-faces";
+const REMOVED_STORAGE_KEY = "bunnecho-removed-shared-faces";
 const SYNC_EVENT = "bunnecho-shared-faces-sync";
 const SERVER_SNAPSHOT: SharedFaceItem[] = [];
 
@@ -59,16 +66,37 @@ function readRaw() {
           return null;
         }
 
-        return {
+        const sharedFace: SharedFaceItem = {
           id,
           photoId: typed.photoId,
           dataUrl: typed.dataUrl,
           createdAt: typed.createdAt,
-        } satisfies SharedFaceItem;
+          frameIndices: Array.isArray(typed.frameIndices)
+            ? typed.frameIndices.filter((index): index is number => Number.isSafeInteger(index) && index >= 0)
+            : undefined,
+        };
+        return sharedFace;
       })
       .filter((item): item is SharedFaceItem => item !== null);
   } catch {
     return [];
+  }
+}
+
+function readRemovedIds() {
+  if (!canUseStorage()) {
+    return new Set<string>();
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REMOVED_STORAGE_KEY) ?? "[]") as unknown;
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === "string")
+        : [],
+    );
+  } catch {
+    return new Set<string>();
   }
 }
 
@@ -96,8 +124,19 @@ export function listSharedFaces() {
   return cachedItems;
 }
 
+export function wasPhotoShared(photoId: string) {
+  return (
+    readRaw().some((item) => item.photoId === photoId) ||
+    [...readRemovedIds()].some((id) => id === photoId || id.startsWith(`${photoId}:`))
+  );
+}
+
 export function upsertSharedFace(photoId: string, dataUrl: string) {
-  const items = listSharedFaces();
+  if (readRemovedIds().has(photoId)) {
+    return;
+  }
+
+  const items = readRaw();
   const index = items.findIndex((item) => item.id === photoId);
   const nextItem: SharedFaceItem = {
     id: photoId,
@@ -115,24 +154,36 @@ export function upsertSharedFace(photoId: string, dataUrl: string) {
   writeRaw([...items, nextItem]);
 }
 
-export function upsertSharedFaces(photoId: string, dataUrls: string[]) {
-  const items = listSharedFaces();
+export function upsertSharedFaces(photoId: string, cutouts: SharedFaceCutout[]) {
+  const items = readRaw();
   const createdAt = new Date().toISOString();
+  const removedIds = readRemovedIds();
+
+  for (const id of removedIds) {
+    if (id === photoId || id.startsWith(`${photoId}:`)) removedIds.delete(id);
+  }
+  if (canUseStorage()) {
+    window.localStorage.setItem(REMOVED_STORAGE_KEY, JSON.stringify([...removedIds]));
+  }
 
   // 같은 사진의 이전 공유(구 id 형식 포함)를 모두 교체
   const filtered = items.filter(
     (item) =>
-      item.photoId !== photoId && !item.id.startsWith(`${photoId}:`),
+      item.photoId !== photoId &&
+      !item.id.startsWith(`${photoId}:`) &&
+      !removedIds.has(item.id) &&
+      !removedIds.has(item.photoId),
   );
 
-  const nextItems = dataUrls.map((dataUrl, index) => ({
-    id: `${photoId}:${index}`,
-    photoId,
-    dataUrl,
-    createdAt,
-  }));
+  const nextItems = cutouts.flatMap(({ dataUrl, frameIndices }) => {
+        const indices = [...new Set(frameIndices)].sort((a, b) => a - b);
+        if (indices.length === 0) return [];
+        const id = `${photoId}:${indices.join("+")}`;
+        return [{ id, photoId, dataUrl, createdAt, frameIndices: indices }];
+      });
 
   writeRaw([...filtered, ...nextItems]);
+  return nextItems.length;
 }
 
 export function clearSharedFaces() {
@@ -140,7 +191,17 @@ export function clearSharedFaces() {
 }
 
 export function removeSharedFace(id: string) {
-  const items = listSharedFaces();
+  const items = readRaw();
+  if (canUseStorage()) {
+    const removedIds = readRemovedIds();
+    removedIds.add(id);
+    const item = items.find((entry) => entry.id === id);
+    for (const index of item?.frameIndices ?? []) {
+      removedIds.add(`${item?.photoId}:${index}`);
+    }
+    window.localStorage.setItem(REMOVED_STORAGE_KEY, JSON.stringify([...removedIds]));
+  }
+
   writeRaw(items.filter((item) => item.id !== id));
 }
 
