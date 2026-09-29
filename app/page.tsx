@@ -21,6 +21,7 @@ import { upsertRawPhoto } from "@/lib/photo-raw-store";
 import { detectFacesInVideo, type FaceBox } from "@/lib/face-detection";
 import { PARTICLE_COLOR_PALETTE } from "@/lib/particle-colors";
 import { upsertPhotoOverlaySnapshot } from "@/lib/photo-overlay-store";
+import { beautifyCapturedCanvas, preloadSkinBeautyModel } from "@/lib/beautify-photo";
 import { selectFrame } from "@/lib/frame-selection";
 import {
   FRAME_PROFILES,
@@ -478,6 +479,8 @@ export default function Home() {
     "bunny",
   );
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null);
+  const [isProcessingCapture, setIsProcessingCapture] = useState(false);
+  const captureInProgressRef = useRef(false);
   const [capturePhase, setCapturePhase] = useState<"idle" | "freeze" | "slide">(
     "idle",
   );
@@ -887,8 +890,8 @@ export default function Home() {
     }, 200);
   }, []);
 
-  const capturePhoto = useCallback(() => {
-    if (isCapturingTransition) {
+  const capturePhoto = useCallback(async () => {
+    if (isCapturingTransition || captureInProgressRef.current) {
       return;
     }
 
@@ -994,6 +997,20 @@ export default function Home() {
     rawCtx.scale(-1, 1);
     rawCtx.translate(CAPTURE_X_NUDGE_PX, 0);
     rawCtx.drawImage(video, offsetX, offsetY, renderWidth, renderHeight);
+
+    captureInProgressRef.current = true;
+    setIsProcessingCapture(true);
+    playShutterSound();
+    setShowShutterFlash(true);
+    window.setTimeout(() => setShowShutterFlash(false), 70);
+    try {
+      await beautifyCapturedCanvas(rawCanvas);
+    } catch (error) {
+      console.error("피부 보정을 적용하지 못해 원본 사진으로 저장합니다.", error);
+    } finally {
+      captureInProgressRef.current = false;
+      setIsProcessingCapture(false);
+    }
     const rawDataUrl = rawCanvas.toDataURL("image/jpeg", 0.92);
 
     const finalCanvas = document.createElement("canvas");
@@ -1005,12 +1022,7 @@ export default function Home() {
       return;
     }
 
-    finalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    finalCtx.filter = "none";
-    finalCtx.translate(outWidth, 0);
-    finalCtx.scale(-1, 1);
-    finalCtx.translate(CAPTURE_X_NUDGE_PX, 0);
-    finalCtx.drawImage(video, offsetX, offsetY, renderWidth, renderHeight);
+    finalCtx.drawImage(rawCanvas, 0, 0);
     finalCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     finalCtx.filter = "none";
 
@@ -1065,13 +1077,7 @@ export default function Home() {
     );
     setCapturedFrame(dataUrl);
     setCapturePhase("freeze");
-    setShowShutterFlash(true);
     setMessage("찰칵");
-    playShutterSound();
-
-    window.setTimeout(() => {
-      setShowShutterFlash(false);
-    }, 70);
 
     window.setTimeout(() => {
       setCapturePhase("slide");
@@ -1120,6 +1126,13 @@ export default function Home() {
   }, [cameraActive, isLayoutMounted, windowLayouts?.camera.width, windowLayouts?.camera.height]);
 
   useEffect(() => {
+    if (!cameraActive) return;
+    void preloadSkinBeautyModel().catch((error) => {
+      console.warn("피부 보정 모델을 미리 불러오지 못했습니다.", error);
+    });
+  }, [cameraActive]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Enter") {
         return;
@@ -1151,7 +1164,7 @@ export default function Home() {
     };
 
     const onTouchEnd = (event: TouchEvent) => {
-      if (showPermissionModal || isCapturingTransition || !cameraActive) {
+      if (showPermissionModal || isCapturingTransition || isProcessingCapture || !cameraActive) {
         return;
       }
       if (isInteractiveTarget(event.target)) {
@@ -1192,12 +1205,13 @@ export default function Home() {
     cameraActive,
     capturePhoto,
     isCapturingTransition,
+    isProcessingCapture,
     showPermissionModal,
   ]);
 
   const handleViewportDoubleClick = useCallback(
     (event: React.MouseEvent<HTMLElement>) => {
-      if (showPermissionModal || isCapturingTransition || !cameraActive) {
+      if (showPermissionModal || isCapturingTransition || isProcessingCapture || !cameraActive) {
         return;
       }
       if (event.target instanceof HTMLElement) {
@@ -1211,6 +1225,7 @@ export default function Home() {
       cameraActive,
       capturePhoto,
       isCapturingTransition,
+      isProcessingCapture,
       showPermissionModal,
     ],
   );
@@ -1283,6 +1298,12 @@ export default function Home() {
 
               {showShutterFlash && (
                 <div className="pointer-events-none absolute inset-0 z-30 animate-pulse bg-white/85" />
+              )}
+
+              {isProcessingCapture && (
+                <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/35 text-sm font-semibold text-white">
+                  사진 보정 중...
+                </div>
               )}
 
               {cameraActive && selectedParticlePreset.id !== "none" && (
@@ -1396,6 +1417,7 @@ export default function Home() {
                 disabled={
                   !cameraActive ||
                   isCapturingTransition ||
+                  isProcessingCapture ||
                   showPermissionModal
                 }
                 className="rounded-full transition hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
