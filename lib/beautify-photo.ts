@@ -65,9 +65,22 @@ export function createSkinBeautyOverlay(
 }
 
 let segmenterPromise: Promise<import("@mediapipe/tasks-vision").ImageSegmenter> | null = null;
+let tfliteInfoFilterInstalled = false;
+
+export function installTfliteInfoFilter() {
+  if (tfliteInfoFilterInstalled) return;
+  const originalError = console.error;
+  // MediaPipe WASM captures console.error during loading, so filter before importing it.
+  console.error = (...args) => {
+    if (args.length === 1 && args[0] === "INFO: Created TensorFlow Lite XNNPACK delegate for CPU.") return;
+    originalError(...args);
+  };
+  tfliteInfoFilterInstalled = true;
+}
 
 function getSkinSegmenter() {
   if (!segmenterPromise) {
+    installTfliteInfoFilter();
     segmenterPromise = (async () => {
       const vision = await import("@mediapipe/tasks-vision");
       const fileset = await vision.FilesetResolver.forVisionTasks(

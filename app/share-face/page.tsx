@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import {
   useEffect,
   useMemo,
@@ -9,7 +7,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { PencilXMark } from "@/components/pencil-x-mark";
-import { Button } from "@/components/ui/button";
 import { getShareFaceBubbleSize } from "@/lib/share-face-size";
 import {
   getVisibleBounds,
@@ -26,6 +23,9 @@ import {
 } from "@/lib/shared-face-store";
 
 const BG_URL = "/img/background/share-face-bg.gif";
+const Logo = "/img/share/share-face-logo.png";
+const Art = "/img/share/share-face-art.png";
+
 type Bubble = {
   id: string;
   src: string;
@@ -39,10 +39,14 @@ type Bubble = {
 type CachedShape = { src: string; shape: AlphaShape };
 
 function getActiveShapes(bubbles: Bubble[], cache: Map<string, CachedShape>) {
-  return new Map(bubbles.flatMap((bubble) => {
-    const cached = cache.get(bubble.id);
-    return cached?.src === bubble.src ? [[bubble.id, cached.shape] as const] : [];
-  }));
+  return new Map(
+    bubbles.flatMap((bubble) => {
+      const cached = cache.get(bubble.id);
+      return cached?.src === bubble.src
+        ? [[bubble.id, cached.shape] as const]
+        : [];
+    }),
+  );
 }
 
 function hashToUnit(seed: string) {
@@ -68,7 +72,12 @@ function makeBubble(
   height: number,
 ): Bubble {
   const baseSize = seedRange(`${item.id}-size`, 165, 210);
-  const size = getShareFaceBubbleSize(baseSize, item.frameIndices?.length ?? 1, width, height);
+  const size = getShareFaceBubbleSize(
+    baseSize,
+    item.frameIndices?.length ?? 1,
+    width,
+    height,
+  );
   const maxX = Math.max(width - size, 1);
   const maxY = Math.max(height - size, 1);
 
@@ -90,15 +99,30 @@ function getBubbleCenter(bubble: Bubble) {
   };
 }
 
-function clampBubbleToBounds(bubble: Bubble, width: number, height: number, shape?: AlphaShape) {
-  const bounds = shape ? getVisibleBounds(bubble, shape) : {
-    left: bubble.x, top: bubble.y, right: bubble.x + bubble.size, bottom: bubble.y + bubble.size,
-  };
+function clampBubbleToBounds(
+  bubble: Bubble,
+  width: number,
+  height: number,
+  shape?: AlphaShape,
+) {
+  const bounds = shape
+    ? getVisibleBounds(bubble, shape)
+    : {
+        left: bubble.x,
+        top: bubble.y,
+        right: bubble.x + bubble.size,
+        bottom: bubble.y + bubble.size,
+      };
   bubble.x += Math.max(0, -bounds.left) - Math.max(0, bounds.right - width);
   bubble.y += Math.max(0, -bounds.top) - Math.max(0, bounds.bottom - height);
 }
 
-function bounceBubbleOffWalls(bubble: Bubble, width: number, height: number, shape: AlphaShape) {
+function bounceBubbleOffWalls(
+  bubble: Bubble,
+  width: number,
+  height: number,
+  shape: AlphaShape,
+) {
   const bounds = getVisibleBounds(bubble, shape);
   if (bounds.left <= 0) {
     bubble.x -= bounds.left;
@@ -117,19 +141,25 @@ function bounceBubbleOffWalls(bubble: Bubble, width: number, height: number, sha
   }
 }
 
-function resolveBubblePairCollisions(bubbles: Bubble[], shapes: Map<string, AlphaShape>) {
+function resolveBubblePairCollisions(
+  bubbles: Bubble[],
+  shapes: Map<string, AlphaShape>,
+) {
   for (let i = 0; i < bubbles.length; i += 1) {
     for (let j = i + 1; j < bubbles.length; j += 1) {
       const a = bubbles[i];
       const b = bubbles[j];
       const aShape = shapes.get(a.id);
       const bShape = shapes.get(b.id);
-      if (!aShape || !bShape || !visiblePixelsOverlap(a, aShape, b, bShape)) continue;
+      if (!aShape || !bShape || !visiblePixelsOverlap(a, aShape, b, bShape))
+        continue;
 
       const aBounds = getVisibleBounds(a, aShape);
       const bBounds = getVisibleBounds(b, bShape);
-      const dx = (bBounds.left + bBounds.right - aBounds.left - aBounds.right) / 2;
-      const dy = (bBounds.top + bBounds.bottom - aBounds.top - aBounds.bottom) / 2;
+      const dx =
+        (bBounds.left + bBounds.right - aBounds.left - aBounds.right) / 2;
+      const dy =
+        (bBounds.top + bBounds.bottom - aBounds.top - aBounds.bottom) / 2;
       const distance = Math.hypot(dx, dy) || 1;
       const nx = dx / distance || 1;
       const ny = dy / distance;
@@ -141,17 +171,17 @@ function resolveBubblePairCollisions(bubbles: Bubble[], shapes: Map<string, Alph
       let high = Math.max(a.size, b.size) * 2;
       for (let step = 0; step < 10; step += 1) {
         const offset = (low + high) / 2;
-        a.x = startAX - nx * offset / 2;
-        a.y = startAY - ny * offset / 2;
-        b.x = startBX + nx * offset / 2;
-        b.y = startBY + ny * offset / 2;
+        a.x = startAX - (nx * offset) / 2;
+        a.y = startAY - (ny * offset) / 2;
+        b.x = startBX + (nx * offset) / 2;
+        b.y = startBY + (ny * offset) / 2;
         if (visiblePixelsOverlap(a, aShape, b, bShape)) low = offset;
         else high = offset;
       }
-      a.x = startAX - nx * (high + 1) / 2;
-      a.y = startAY - ny * (high + 1) / 2;
-      b.x = startBX + nx * (high + 1) / 2;
-      b.y = startBY + ny * (high + 1) / 2;
+      a.x = startAX - (nx * (high + 1)) / 2;
+      a.y = startAY - (ny * (high + 1)) / 2;
+      b.x = startBX + (nx * (high + 1)) / 2;
+      b.y = startBY + (ny * (high + 1)) / 2;
 
       const dvx = b.vx - a.vx;
       const dvy = b.vy - a.vy;
@@ -219,28 +249,51 @@ export default function ShareFacePage() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all(memoFaces.map(async (item): Promise<[string, CachedShape]> => {
-      const cached = shapesRef.current.get(item.id);
-      if (cached?.src === item.dataUrl) return [item.id, cached];
+    void Promise.all(
+      memoFaces.map(async (item): Promise<[string, CachedShape]> => {
+        const cached = shapesRef.current.get(item.id);
+        if (cached?.src === item.dataUrl) return [item.id, cached];
 
-      const image = new Image();
-      image.src = item.dataUrl;
-      await image.decode();
-      const scale = Math.min(1, 384 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("공유 이미지의 투명 영역을 읽을 수 없습니다.");
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
-      return [item.id, { src: item.dataUrl, shape: makeAlphaShape(canvas.width, canvas.height, rgba) }];
-    })).then((entries) => {
-      if (cancelled) return;
-      shapesRef.current = new Map(entries);
-      setShapeVersion((version) => version + 1);
-    }).catch((error) => console.error("공유 이미지 충돌 영역을 읽지 못했습니다.", error));
-    return () => { cancelled = true; };
+        const image = new Image();
+        image.src = item.dataUrl;
+        await image.decode();
+        const scale = Math.min(
+          1,
+          384 / Math.max(image.naturalWidth, image.naturalHeight),
+        );
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        if (!context)
+          throw new Error("공유 이미지의 투명 영역을 읽을 수 없습니다.");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const rgba = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        ).data;
+        return [
+          item.id,
+          {
+            src: item.dataUrl,
+            shape: makeAlphaShape(canvas.width, canvas.height, rgba),
+          },
+        ];
+      }),
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        shapesRef.current = new Map(entries);
+        setShapeVersion((version) => version + 1);
+      })
+      .catch((error) =>
+        console.error("공유 이미지 충돌 영역을 읽지 못했습니다.", error),
+      );
+    return () => {
+      cancelled = true;
+    };
   }, [memoFaces]);
 
   useEffect(() => {
@@ -299,7 +352,12 @@ export default function ShareFacePage() {
             height,
           ),
         };
-        clampBubbleToBounds(resized, width, height, shapesRef.current.get(bubble.id)?.shape);
+        clampBubbleToBounds(
+          resized,
+          width,
+          height,
+          shapesRef.current.get(bubble.id)?.shape,
+        );
         return resized;
       });
       setBubbles(bubblesRef.current.map((bubble) => ({ ...bubble })));
@@ -373,19 +431,25 @@ export default function ShareFacePage() {
       ref={containerRef}
       className="relative min-h-svh w-full overflow-hidden"
     >
-      <div
-        className="absolute inset-0 bg-contain bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${BG_URL})` }}
+      <img
+        src={Logo}
+        alt="logo"
+        className="pointer-events-none absolute left-4 top-4 z-10 h-auto w-[clamp(12rem,23vw,25rem)] max-w-full opacity-60"
       />
 
-      <div className="relative z-10 flex items-center justify-between px-4 py-4 md:px-8">
-        <h1 className="text-lg font-semibold text-white md:text-2xl">
-          둥둥 얼굴 공유 화면
-        </h1>
-        <Link href="/view-photo">
-          <Button variant="secondary">사진 페이지로</Button>
-        </Link>
-      </div>
+      <img
+        src={Art}
+        alt="art"
+        className="pointer-events-none absolute bottom-4 left-4 z-10 h-auto w-[clamp(18rem,42vw,45rem)] max-w-full opacity-80"
+      />
+
+      <div
+        className="absolute inset-0 bg-center bg-no-repeat"
+        style={{
+          backgroundImage: `url(${BG_URL})`,
+          backgroundSize: "100% 100%",
+        }}
+      />
 
       {bubbles.length === 0 ? (
         <div className="relative z-10 flex min-h-[70svh] items-center justify-center p-6">
