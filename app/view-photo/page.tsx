@@ -335,8 +335,8 @@ export default function ViewPhotoPage() {
               onClick={() =>
                 window.open(
                   "/share-face",
-                  "share-face",
-                  "popup=yes,width=1280,height=800,noopener,noreferrer",
+                  "_blank",
+                  "noopener,noreferrer",
                 )
               }
               className={`absolute h-auto ${IMAGE_BUTTON_CLASS}`}
